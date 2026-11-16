@@ -1,4 +1,4 @@
-# Metol（旧称 NX-WA）
+# Metol
 
 Samsung NX500 / NX1（Tizen / DRIMe5）增强固件 mod，基于社区上游
 [`ottokiksmaler/nx500_nx1_modding`](https://github.com/ottokiksmaler/nx500_nx1_modding) 改造与扩展。
@@ -9,15 +9,15 @@ Samsung NX500 / NX1（Tizen / DRIMe5）增强固件 mod，基于社区上游
 
 > English version: [README_EN.md](README_EN.md)
 
-**最新 v2.88.0-nxwa.15.4**（2026-11-14）— 双语发行：每次发版两个包，
-`NX-WA-<ver>.zip`（中文）与 `NX-WA-<ver>-EN.zip`（英文菜单 / 英文 NXUI 面板 / 英文 README），
+**最新 1.15.6**（2026-11-16）— 双语发行：每次发版两个包，
+`Metol-<ver>.zip`（中文）与 `Metol-<ver>-EN.zip`（英文菜单 / 英文 NXUI 面板 / 英文 README），
 Release 说明中英并列。
 
 ---
 
 ## 30 秒上手
 
-1. 把 `NX-WA-<ver>.zip` 解压到 **SD 卡根目录** → 插卡 → 屏上「安装完成」→ 自动重启。
+1. 把 `Metol-<ver>.zip` 解压到 **SD 卡根目录** → 插卡 → 屏上「安装完成」→ 自动重启。
 2. **手动开一次蓝牙**（机身菜单 → 系统设置 → 启用蓝牙）—— mod 的开机钩子靠它初始化。
 3. 记住四个按键：
 
@@ -57,7 +57,7 @@ sh /opt/usr/nx-ks/nxui.sh diag       # 面板能不能用，一次看全
 | `/opt/usr/nx-ks/onboard.log` | 装机自检（telnet / ssh / nxui diag / IP） | ✅ 机身 p10 |
 | `/tmp/nxui.log` | 面板全部 `READY / ACTION / BACKEND ok=…` | ❌ 关机即失 |
 | `/tmp/db.log` | dropbear（ssh 起没起、为什么没起） | ❌ |
-| `/tmp/nxwa-lut-video/watch.log` | 录像 LUT 监视器 | ❌ |
+| `/tmp/metol-lut-video/watch.log` | 录像 LUT 监视器 | ❌ |
 
 **相机自己关机/重启**是唯一必须提前取证的问题：`pwrlog.txt` 里最后一条
 （`up=… pwr=… ssh=… ui=… lut=…`）加上 `pwrlog.sh dump 60` 的时间轴就是全部线索，
@@ -76,12 +76,12 @@ sh /opt/usr/nx-ks/nxui.sh diag       # 面板能不能用，一次看全
 
 ## 安装
 
-1. 把 `info.tg`、`nx_cs.adj`、`install.sh`、`scripts/` 放到 **SD 卡根目录**（或把 `NX-WA-<version>.zip` 解压到根目录）。
+1. 把 `info.tg`、`nx_cs.adj`、`install.sh`、`scripts/` 放到 **SD 卡根目录**（或把 `Metol-<version>.zip` 解压到根目录）。
 2. 插卡 → 自动安装，屏上显示「安装完成」。
 3. **手动开一次蓝牙** —— mod 的开机钩子靠它初始化。
 
 - 固件：NX500 **1.12** / NX1 **1.41**，其它版本拒绝安装。
-- 两个包：`NX-WA-<ver>.zip`（中文）与 `NX-WA-<ver>-EN.zip`（英文菜单 + 英文 NXUI 面板 + 英文 README）。功能完全相同，只有文案语言不同。装错语言再装回另一个包即可，`nxui/lang` 随包覆盖。
+- 两个包：`Metol-<ver>.zip`（中文）与 `Metol-<ver>-EN.zip`（英文菜单 + 英文 NXUI 面板 + 英文 README）。功能完全相同，只有文案语言不同。装错语言再装回另一个包即可，`nxui/lang` 随包覆盖。
 - 再插一次卡 = **增量同步**（只覆盖、不删除；永不自动卸载）；卸载走相机菜单里的 `卸载模块`。
 - 安装 / 同步 / WiFi push / 回滚：[SYNC.md](SYNC.md)（中英双语）。
 
@@ -139,7 +139,7 @@ sh /opt/usr/nx-ks/nxui.sh diag       # 面板能不能用，一次看全
 | HDR | M 档五档快门（65 / 92 / 119 / 146 / 200）连拍 5 张，**机身不合成**，后期自己叠（`1HDR.sh`，上游） |
 | LUT 滤镜 | ★ 直接进 NXUI 的 LUT 面板（等同 EV+WiFi） |
 | TC 曲线 → | ★ 录像曲线：原厂 / Log / Flat / 高对比 |
-| `版本 v2.88` | 版本弹窗（`ver.sh`） |
+| `Metol 版本` | 版本弹窗（`ver.sh`） |
 | 摄像模式 ☑ | 快门键变录像键（`camcorder_mode.sh` → `shutter_to_rec`，上游） |
 
 ### 对焦 & 配置文件
@@ -163,7 +163,7 @@ sh /opt/usr/nx-ks/nxui.sh diag       # 面板能不能用，一次看全
 | 无镜头释放 ☑ | 无镜头也能释放快门（`prefman 0xc2dd=1`，上游） |
 | 启用蓝牙 ☑ | 重启蓝牙服务（`bt.sh`，上游） |
 | 叠加显示 ☑ | 打开 `onscreen_ov` 叠加层（上游） |
-| 卸载模块 v2.88 | 卸载 mod（`uninstall.sh`） |
+| 卸载模块 | 卸载 mod（`uninstall.sh`） |
 
 ### 分辨率映射
 

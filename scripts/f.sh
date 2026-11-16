@@ -1,6 +1,6 @@
 #!/bin/bash
 # =====================================================================
-# f.sh —— NX-WA 的 App 命令入口（`st app film <命令> [参数...]` 的接收端）
+# f.sh —— Metol 的 App 命令入口（`st app film <命令> [参数...]` 的接收端）
 #
 # 调用链：
 #   st app film recipe apply portra400
@@ -57,7 +57,7 @@ deny() {
 
 usage() {
     cat <<'EOF'
-f.sh — NX-WA App 命令入口（经 `st app film` 调用）
+f.sh — Metol App 命令入口（经 `st app film` 调用）
 
   help                                  显示本用法
   status                                汇总状态（版本 / 模式 / PW 槽 / IP）
@@ -99,7 +99,7 @@ deadlock_guard() {
 u6() { st cap capdtm getusr "$1" 2>/dev/null | tr -d '\r' | sed -n 's/.*UserData is \(.*\)/\1/p'; }
 
 do_status() {
-    echo "== NX-WA status =="
+    echo "== Metol status =="
     echo "firmware : $(tr '\n' ' ' < /etc/version.info 2>/dev/null)"
     echo "uptime   : $(cut -d' ' -f1 /proc/uptime 2>/dev/null)s  load: $(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null)"
     echo "mode     : $(u6 DIALMODE)"

@@ -4,8 +4,8 @@
 pack_release.py -- 把当前 mod 打包为可直接解压到 SD 卡根的发布 zip。
 
 产物：
-  dist/NX-WA-<version>.zip          中文包（默认）
-  dist/NX-WA-<version>-EN.zip       英文包（--lang en）
+  dist/Metol-<version>.zip          中文包（默认）
+  dist/Metol-<version>-EN.zip       英文包（--lang en）
   dist/<zip>.md5                    校验值（贴进 Release notes）
 
 用法：
@@ -156,12 +156,12 @@ def main():
     entries = build_entries(files, extras, lang)
     suffix = '' if lang == 'zh' else '-' + lang.upper()
     os.makedirs('dist', exist_ok=True)
-    zpath = os.path.join('dist', 'NX-WA-%s%s.zip' % (ver, suffix))
+    zpath = os.path.join('dist', 'Metol-%s%s.zip' % (ver, suffix))
 
     commit = git('rev-parse', '--short', 'HEAD')
     branch = git('rev-parse', '--abbrev-ref', 'HEAD')
     manifest = [
-        'NX-WA release manifest',
+        'Metol release manifest',
         '======================',
         'version      : %s' % ver,
         'language     : %s' % lang,
@@ -184,7 +184,7 @@ def main():
     with zipfile.ZipFile(zpath, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for name in sorted(entries):
             z.writestr(name, entries[name])
-        z.writestr('NX-WA-MANIFEST.txt', '\n'.join(manifest) + '\n')
+        z.writestr('Metol-MANIFEST.txt', '\n'.join(manifest) + '\n')
 
     size = os.path.getsize(zpath)
     print('已生成: %s  (%.1f MB, %d 文件 + manifest, lang=%s)' %

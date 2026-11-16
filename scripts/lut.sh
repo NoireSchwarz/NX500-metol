@@ -75,6 +75,8 @@ ST=$(nx_ram lut)                # 易失：还原点、日志、标志（tmpfs�
 PD=/mnt/mmc/lut/state           # 持久：只有库顺序与转换缓存
 SLOT=0x81119F00                 # A18
 STOCK_SLOT=0x81115200           # A17 原厂表（强度 0 端基准）
+# ★ 目录名里的 nxwa 是历史落盘路径：nx_regtabwrite.arm 内硬编码同名路径，
+#   单改这里会让备份与读取落到两个目录，改名必须同步重编该二进制。
 BAKDIR=/mnt/mmc/nxwa_regtab_20261018   # 原厂登记表备份（Still6 / BV12）
 STILLBAK=$BAKDIR/still6_orig.bin
 BVBAK=$BAKDIR/bv12_orig.bin

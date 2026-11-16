@@ -7,7 +7,7 @@ checkbox|Enable Bluetooth|bt.sh
 checkbox|Overlay|ov.sh
 checkbox|OFF menu-button|z_button.sh
 
-button| Mod v2.88 |ver.sh
+button| Mod 版本 |ver.sh
 button|Uninstall Mod|uninstall.sh
 
 button|GO BACK|@/opt/usr/nx-ks/gui_ini.NX1

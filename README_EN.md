@@ -1,4 +1,4 @@
-# Metol (formerly NX-WA)
+# Metol
 
 An enhancement mod for the **Samsung NX500 / NX1** (Tizen / DRIMe5), built on the community
 [`ottokiksmaler/nx500_nx1_modding`](https://github.com/ottokiksmaler/nx500_nx1_modding) upstream.
@@ -9,15 +9,15 @@ An enhancement mod for the **Samsung NX500 / NX1** (Tizen / DRIMe5), built on th
 
 > 中文版见 [README.md](README.md)
 
-**Latest v2.88.0-nxwa.15.4** (2026-11-14) — bilingual release: every version ships two packages,
-`NX-WA-<ver>.zip` (Chinese) and `NX-WA-<ver>-EN.zip` (English menus / English NXUI panel / English
+**Latest 1.15.6** (2026-11-16) — bilingual release: every version ships two packages,
+`Metol-<ver>.zip` (Chinese) and `Metol-<ver>-EN.zip` (English menus / English NXUI panel / English
 README), with release notes in both languages.
 
 ---
 
 ## 30-second start
 
-1. Unzip `NX-WA-<ver>-EN.zip` to the **SD-card root** → insert the card → "install complete" → the camera reboots.
+1. Unzip `Metol-<ver>-EN.zip` to the **SD-card root** → insert the card → "install complete" → the camera reboots.
 2. **Turn Bluetooth on once by hand** (menu → Settings → Enable Bluetooth) — the mod's boot hook is initialised by it.
 3. Learn four keys:
 
@@ -54,7 +54,7 @@ causes: the binary is missing, the model is NX1, or someone ran `disable`.
 | `/opt/usr/nx-ks/onboard.log` | install self-check (telnet / ssh / nxui diag / IP) | yes — p10 |
 | `/tmp/nxui.log` | panel `READY / ACTION / BACKEND ok=…` lines | no |
 | `/tmp/db.log` | dropbear (did ssh start, and why not) | no |
-| `/tmp/nxwa-lut-video/watch.log` | video LUT watcher | no |
+| `/tmp/metol-lut-video/watch.log` | video LUT watcher | no |
 
 A camera that **powers itself off** is the one case that must be captured in advance: the last
 `pwrlog.txt` line (`up=… pwr=… ssh=… ui=… lut=…`) plus `pwrlog.sh dump 60` is the whole story.
@@ -73,12 +73,12 @@ Everything under `/tmp` is gone at that moment.
 
 ## Install
 
-1. Put `info.tg`, `nx_cs.adj`, `install.sh` and `scripts/` at the **root of the SD card** (or unzip `NX-WA-<version>.zip` there).
+1. Put `info.tg`, `nx_cs.adj`, `install.sh` and `scripts/` at the **root of the SD card** (or unzip `Metol-<version>.zip` there).
 2. Insert the card → it installs automatically and shows "install complete".
 3. **Turn Bluetooth on once by hand** — the mod's boot hook is initialised by it.
 
 - Firmware: NX500 **1.12** / NX1 **1.41**; anything else is refused.
-- Two packages: `NX-WA-<ver>.zip` (Chinese) and `NX-WA-<ver>-EN.zip` (English menus, English NXUI panel, English README). Identical features. Installing the other package swaps the language back; `nxui/lang` is overwritten by the package.
+- Two packages: `Metol-<ver>.zip` (Chinese) and `Metol-<ver>-EN.zip` (English menus, English NXUI panel, English README). Identical features. Installing the other package swaps the language back; `nxui/lang` is overwritten by the package.
 - Inserting the card again = **incremental sync** (overwrite only, never delete, never auto-uninstall); uninstall from the camera menu (`Uninstall`).
 - Install / sync / WiFi push / rollback: [SYNC.md](SYNC.md) (bilingual).
 
@@ -137,7 +137,7 @@ Six entries on the main page plus one status row. ★ = added by this project,
 | HDR | five shutter steps (65 / 92 / 119 / 146 / 200) in M mode, five frames, **no in-camera merge** (`1HDR.sh`, upstream) |
 | LUT Filter | ★ opens the NXUI LUT panel (same as EV+WiFi) |
 | TC Curve → | ★ video tone curve: Stock / Log / Flat / High Contrast |
-| `Mod v2.88` | version popup (`ver.sh`) |
+| `Metol 版本` | version popup (`ver.sh`) |
 | Camcorder ☑ | shutter button becomes a record button (`camcorder_mode.sh` → `shutter_to_rec`, upstream) |
 
 ### Focus + Profiles
@@ -161,7 +161,7 @@ Six entries on the main page plus one status row. ★ = added by this project,
 | No Lens Release ☑ | release the shutter without a lens (`prefman 0xc2dd=1`, upstream) |
 | Enable Bluetooth ☑ | restarts the Bluetooth service (`bt.sh`, upstream) |
 | Overlay ☑ | starts the `onscreen_ov` overlay (upstream) |
-| Uninstall v2.88 | uninstalls the mod (`uninstall.sh`) |
+| Uninstall | uninstalls the mod (`uninstall.sh`) |
 
 ### Resolution mapping
 

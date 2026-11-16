@@ -1,5 +1,5 @@
 #!/bin/sh
-# pwrlog.sh — 把「关机前最后一刻」留在 SD 上（2.88.0-nxwa.15.1 debug 版专用）
+# pwrlog.sh — 把「关机前最后一刻」留在 SD 上（Metol 1.15 起）
 #
 # 为什么需要它（2026-11-10）：
 #   有用户在「挑选 LUT」过程中遇到相机自己走关机画面断电。这个现象只可能是
@@ -31,7 +31,7 @@ set -u
 D=/opt/usr/nx-ks
 BB=$D/busybox
 LOG=/mnt/mmc/nx-ks/pwrlog.txt
-PID=/tmp/nxwa-pwrlog.pid
+PID=/tmp/metol-pwrlog.pid
 PERIOD=${PWRLOG_PERIOD:-300}
 PREFMAN=$(command -v prefman 2>/dev/null || echo /usr/bin/prefman)
 
@@ -97,7 +97,7 @@ case "${1:-once}" in
     loop)
         # 内部动词：真正干活的循环，由 start 用 setsid 拉起。
         # 独占锁：setsid 的 $! 不一定是循环自己的 pid，靠 pid 文件判会重复起。
-        exec 9>/tmp/nxwa-pwrlog.lock
+        exec 9>/tmp/metol-pwrlog.lock
         $BB flock -n 9 || exit 0
         while :; do
             rotate

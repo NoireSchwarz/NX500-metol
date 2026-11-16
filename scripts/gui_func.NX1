@@ -7,7 +7,7 @@ button|Mod Resolutions|@/opt/usr/nx-ks/gui_res.NX1
 button|Batch Recording|brec.sh
 button|HDR|1HDR.sh
 
-button| Mod v2.88 |ver.sh
+button| Metol 版本 |ver.sh
 checkbox|Camcorder Mode|camcorder_mode.sh
 
 button|GO BACK|@/opt/usr/nx-ks/gui_ini.NX1

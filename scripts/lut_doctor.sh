@@ -24,6 +24,7 @@ BB=$D/busybox
 ST=/tmp/nx/lut                   # 新版：还原点/日志/标志在 tmpfs
 PD=/mnt/mmc/lut/state            # 持久区：order / cv，以及失败时的 last-failure
 OLD=/mnt/mmc/lut/state           # 旧版布局备份位置（兼容检查）
+# 同 lut.sh：nx_regtabwrite.arm 内硬编码此路径，不随品牌改名。
 BAK=/mnt/mmc/nxwa_regtab_20261018
 SLOT=0x81119F00
 ENGREG=0x2082b00c
@@ -188,8 +189,8 @@ if [ -x "$D/lut_video.sh" ]; then
 else
     bad "$D/lut_video.sh 缺失: lut.sh off 第二步就 die，整套还原不执行"
 fi
-if [ -s /tmp/nxwa-lut-video/pid ]; then
-    info "watcher pid=$(cat /tmp/nxwa-lut-video/pid 2>/dev/null)"
+if [ -s /tmp/metol-lut-video/pid ]; then
+    info "watcher pid=$(cat /tmp/metol-lut-video/pid 2>/dev/null)"
 fi
 # 真跑一次非阻塞锁，比 --help 可靠（busybox 的 --help 会被部分 applet 当文件名）
 if ( exec 9>/dev/null; $BB flock -n 9 ) 2>/dev/null; then

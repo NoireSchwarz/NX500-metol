@@ -9,7 +9,7 @@ button|HDR|1HDR.sh
 button|LUT 滤镜|nxui.sh lut
 button|TC 曲线|@/opt/usr/nx-ks/gui_tc.NX500
 
-button| 版本 v2.88 |ver.sh
+button| Metol 版本 |ver.sh
 checkbox|摄像模式|camcorder_mode.sh
 
 button|返回|@/opt/usr/nx-ks/gui_ini.NX500

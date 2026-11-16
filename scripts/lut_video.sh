@@ -3,7 +3,7 @@
 set -u
 D=/opt/usr/nx-ks
 B=$D/busybox
-STATE=/tmp/nxwa-lut-video
+STATE=/tmp/metol-lut-video
 PIDFILE=$STATE/pid
 DURATION=$STATE/duration
 LOG=$STATE/watch.log

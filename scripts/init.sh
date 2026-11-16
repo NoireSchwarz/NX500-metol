@@ -61,7 +61,7 @@ if [ -f "$DB/dropbear" ]; then
 			-r "$DB/dropbear_ed25519_host_key" >>/tmp/db.log 2>&1 </dev/null &
 	fi
 fi
-# ---- pwrlog：关机取证（2.88.0-nxwa.15.1 debug）----
+# ---- pwrlog：关机取证（Metol 1.15 起）----
 # 每 5 min 一条状态到 /mnt/mmc/nx-ks/pwrlog.txt；boot 先把上一次的尾巴抄进来。
 # 只在 debug 版随包；正式版可以删掉这三行，不留 SD 写入。
 if [ -x /opt/usr/nx-ks/pwrlog.sh ]; then

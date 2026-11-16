@@ -8,7 +8,7 @@ checkbox|No Lens Release|nolens.sh
 checkbox|Enable Bluetooth|bt.sh
 
 checkbox|Overlay|ov.sh
-button|Uninstall v2.88|uninstall.sh
+button|Uninstall|uninstall.sh
 
 button|GO BACK|@/opt/usr/nx-ks/gui_ini.NX500
 button|CANCEL|/opt/usr/nx-ks/gui_exit.sh
