@@ -44,9 +44,9 @@ NX-KS 2.88 is still the code lineage (see the bloodline line in `VERSION` and `A
 
 The three hard-coded paths above will be handled together with the next binary rebuild.
 
-## 4. Historical releases renamed
+## 4. Historical releases: titles only
 
-All 18 `NX-WA 2.88.0-nxwa.X` releases on GitHub now carry a `Metol 1.X.Y` title, with the first line of the body updated too. Tags stay as they are (immutable), and asset filenames stay as they are except for 1.15.5 — re-uploading the rest would break existing download links.
+All 18 `NX-WA 2.88.0-nxwa.X` releases on GitHub now carry a `Metol 1.X.Y` title, with the first line of the body updated too. **Tags and asset filenames are untouched** — they are immutable historical records, and renaming them would break existing download links for no gain. The `Metol-` prefix starts with 1.15.6.
 
 ## 5. Packages
 
