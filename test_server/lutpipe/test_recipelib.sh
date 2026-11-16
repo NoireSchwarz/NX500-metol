@@ -30,6 +30,7 @@ EOF
 chmod +x "$D/busybox"
 cp "$REPO/scripts/filmlab.sh" "$D/filmlab.sh"
 cp "$REPO/scripts/recipelib.sh" "$D/recipelib.sh"
+cp "$REPO/scripts/nxstore.sh" "$D/nxstore.sh"
 cp "$REPO/scripts/filmlab/recipes.json" "$LAB/recipes.json"
 sh "$D/filmlab.sh" export > /dev/null 2>&1 || { echo "export 预跑失败"; exit 1; }
 

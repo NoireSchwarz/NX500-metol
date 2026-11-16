@@ -988,7 +988,28 @@ Gallery.prototype.updateDownloadCount = function () {
     }
 };
 
-/* 下载单个文件(同源,直接 fetch 为 Blob 后保存) */
+/* 灯箱由浏览器直接保存附件，页面无需读取跨域原图响应。 */
+Gallery.prototype.downloadUrl = function (file) {
+    try {
+        var url = new URL(file.url);
+        if (!/^https?:$/.test(url.protocol) || url.pathname.indexOf('/DCIM/') !== 0) {
+            return null;
+        }
+        var rel = Gallery.dirRelPath(url.pathname);
+        if (!rel) {
+            return null;
+        }
+        url.port = Gallery.THUMB.port;
+        url.pathname = '/cgi-bin/download';
+        url.search = 'f=' + encodeURIComponent(rel);
+        url.hash = '';
+        return url.href;
+    } catch (e) {
+        return null;
+    }
+};
+
+/* 批量下载的单文件步骤(等待完整响应后再处理下一张) */
 Gallery.prototype.downloadOne = function (file, done) {
     var xhr = new XMLHttpRequest();
     xhr.open('GET', file.url, true);
@@ -1090,13 +1111,14 @@ Gallery.prototype.initLightbox = function () {
     $lb.append('<div class="gallery-lb-toolbar">' +
                '<span class="gallery-lb-counter"></span>' +
                '<button type="button" class="gallery-lb-orig" title="加载原始尺寸(4-8MB,较慢)" style="display:none;">查看原图</button>' +
-               '<button type="button" class="gallery-lb-dl" title="下载当前文件">' +
-               '<i class="fa fa-download"></i></button>' +
+               '<a class="gallery-lb-dl" title="下载当前文件" aria-label="下载当前文件">' +
+               '<i class="fa fa-download"></i></a>' +
                '<button type="button" class="gallery-lb-close" title="关闭 (Esc)">&times;</button>' +
                '</div>');
     $lb.append('<div class="gallery-lb-stage">' +
                '<div class="gallery-lb-spinner"></div>' +
-               '<img class="gallery-lb-media gallery-lb-image" alt="" />' +
+               '<img class="gallery-lb-media gallery-lb-preview" alt="" style="display:none;" />' +
+               '<img class="gallery-lb-media gallery-lb-image" alt="" fetchpriority="high" />' +
                '<video class="gallery-lb-media gallery-lb-video" controls preload="metadata"></video>' +
                '</div>');
     $lb.append('<button type="button" class="gallery-lb-nav gallery-lb-prev" title="上一张 (&#8592;)">&#8249;</button>');
@@ -1120,23 +1142,6 @@ Gallery.prototype.initLightbox = function () {
         $o.prop('disabled', true).text('加载中...');
         $lb.find('.gallery-lb-spinner').show();
         $img.data('fb', true).attr('src', file.url);
-    });
-    // 下载当前文件
-    $lb.find('.gallery-lb-dl').on('click', function () {
-        var file = self.media[self.current];
-        if (file) {
-            self.downloadOne(file, function (success) {
-                var $c = $lb.find('.gallery-lb-counter');
-                if (success) {
-                    $c.text($c.text() + ' (已开始下载)');
-                } else {
-                    $c.text($c.text() + ' (下载失败)');
-                }
-                setTimeout(function () {
-                    $c.text((self.current + 1) + ' / ' + self.media.length);
-                }, 2500);
-            });
-        }
     });
     $lb.on('click', function (e) {
         if (e.target === this) {
@@ -1202,7 +1207,8 @@ Gallery.prototype.closeLightbox = function () {
     var self = this;
     if (self.lightbox) {
         self.lightbox.hide();
-        self.lightbox.find('.gallery-lb-image').attr('src', '');
+        self.lightbox.find('.gallery-lb-image').off('.lb').stop(true, true).removeAttr('src');
+        self.lightbox.find('.gallery-lb-preview').removeAttr('src');
         self.lightbox.find('.gallery-lb-video').attr('src', '');
     }
     self.current = -1;
@@ -1228,24 +1234,34 @@ Gallery.prototype.updateLightbox = function () {
     var $lb = self.lightbox;
     var $counter = $lb.find('.gallery-lb-counter');
     var $spinner = $lb.find('.gallery-lb-spinner');
+    var $preview = $lb.find('.gallery-lb-preview');
     var $img = $lb.find('.gallery-lb-image');
     var $video = $lb.find('.gallery-lb-video');
+    var $origBtn = $lb.find('.gallery-lb-orig');
 
     $counter.text((self.current + 1) + ' / ' + self.media.length);
-    $img.hide().attr('src', '');
+    $lb.find('.gallery-lb-dl').attr('href', self.downloadUrl(file));
+    $img.off('.lb').stop(true, true).hide().removeAttr('src');
+    $preview.hide().removeAttr('src');
     $video.hide().attr('src', '');
+    $origBtn.hide();
 
     if (file.type === 'video') {
         $spinner.hide();
         $video.attr('src', file.url).show();
     } else {
-        $spinner.show();
-        $img.off('.lb');
-        $img.data('fb', false);   // 是否已回退到原图
+        var src = self.thumbUrl(file, 'full');
+        var grid = $('#gallery .gallery-item[data-index="' + self.current + '"] img')[0];
+        var preview = grid && grid.complete && grid.naturalWidth > 0 && grid.currentSrc !== src;
+        if (preview) {
+            $preview.attr('src', grid.currentSrc).show();
+        }
+        $spinner.toggle(!preview);
+        $img.data('fb', src === file.url);
         $img.on('load.lb', function () {
             $spinner.hide();
+            $preview.hide().removeAttr('src');
             $img.fadeIn(120);
-            var $origBtn = $lb.find('.gallery-lb-orig');
             // 非原图时才显示"原图"入口(已是原图就不必再点)
             if ($img.data('fb')) {
                 $origBtn.hide();
@@ -1261,21 +1277,10 @@ Gallery.prototype.updateLightbox = function () {
                 return;
             }
             $spinner.hide();
-            $img.attr('src', '');
+            $img.off('.lb').removeAttr('src');
             $counter.text($counter.text() + ' (加载失败)');
         });
-        // 灯箱优先用 1024px 大图(150-250KB),比 4-8MB 原图快一个数量级;
-        // 需要细看/保存时再点"原图"按钮单独加载。
-        $img.attr('src', self.thumbUrl(file, 'full')).hide();
-    }
-
-    // 预加载相邻图片(同样用大图,不再预拉原图:手机上省一个数量级流量)
-    if (file.type === 'image') {
-        if (self.current - 1 >= 0 && self.media[self.current - 1].type === 'image') {
-            new Image().src = self.thumbUrl(self.media[self.current - 1], 'full');
-        }
-        if (self.current + 1 < self.media.length && self.media[self.current + 1].type === 'image') {
-            new Image().src = self.thumbUrl(self.media[self.current + 1], 'full');
-        }
+        // 相邻照片等用户翻到再加载，避免抢占当前预览的生成和传输。
+        $img.attr('src', src);
     }
 };

@@ -67,42 +67,43 @@ TARGET="$SD/DCIM/$P"
 [ -d "$TARGET" ] || json_fail "not found"
 
 # ---- 列目录:目录与文件分开(busybox ls -F 用尾缀 / 标记目录) ----
-DIRS=""
-FILES=""
-TMP=$(mktemp 2>/dev/null || echo "/tmp/dirlist.$$")
-ls -F "$TARGET" > "$TMP" 2>/dev/null || { rm -f "$TMP"; json_fail "readdir failed"; }
-
-while IFS= read -r name; do
-    [ -z "$name" ] && continue
-    base=${name%/}          # 去掉 -F 加的目录尾缀 /
-    base=${base%\*}         # 去掉 -F 加的可执行标记 *(FAT 挂载全部带 x)
-    # JSON 字符串安全(文件名来自相机,基本 ASCII,这里兜底转义)
-    esc=$(printf '%s' "$base" | sed 's/\\/\\\\/g; s/"/\\"/g')
-    case "$name" in
-        */)
-            case "$base" in
-                .*) continue ;;   # 跳过隐藏目录(.thumbcache 不在 DCIM 内,保险)
-            esac
-            DIRS="$DIRS\"$esc\","
-            ;;
-        *)
-            # 只要有扩展名的都报给前端,媒体过滤交给前端(与旧 HTML 列表行为一致)
-            case "$base" in
-                .*) continue ;;
-            esac
-            FILES="$FILES\"$esc\","
-            ;;
-    esac
-done < "$TMP"
-rm -f "$TMP"
-
-# 去掉末尾逗号
-DIRS=${DIRS%,}
-FILES=${FILES%,}
+TMP=$(mktemp) || json_fail "no temporary file"
+trap 'rm -f "$TMP"' EXIT
+trap 'exit 1' HUP INT TERM
+ls -1F "$TARGET" > "$TMP" 2>/dev/null || json_fail "readdir failed"
 
 echo "Content-Type: application/json"
 echo "Access-Control-Allow-Origin: *"
 echo "Cache-Control: no-store"
 echo ""
-printf '{"ok":true,"path":"%s","dirs":[%s],"files":[%s]}' "$P" "$DIRS" "$FILES"
-exit 0
+DIRLIST_PATH="$P" LC_ALL=C awk '
+    function quote(value,    i, c, out) {
+        out = "\""
+        for (i = 1; i <= length(value); i++) {
+            c = substr(value, i, 1)
+            if (c == "\"" || c == "\\") out = out "\\" c
+            else if (c in control) out = out control[c]
+            else out = out c
+        }
+        return out "\""
+    }
+    function entries(file, directories,    name, comma) {
+        comma = ""
+        while ((getline name < file) > 0) {
+            if (name == "" || name ~ /^\./ || (name ~ /\/$/) != directories) continue
+            sub(/[\/*]$/, "", name)
+            printf "%s%s", comma, quote(name)
+            comma = ","
+        }
+        close(file)
+    }
+    BEGIN {
+        for (i = 1; i < 32; i++) control[sprintf("%c", i)] = sprintf("\\u%04x", i)
+        printf "{\"ok\":true,\"path\":%s,\"dirs\":[", quote(ENVIRON["DIRLIST_PATH"])
+        entries(ARGV[1], 1)
+        printf "],\"files\":["
+        entries(ARGV[1], 0)
+        printf "]}"
+        exit
+    }
+' "$TMP"

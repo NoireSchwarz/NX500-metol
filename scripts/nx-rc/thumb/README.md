@@ -8,6 +8,55 @@
 
 ---
 
+## 0. 2026-11-15 变更：先直切，转码只作回退
+
+NX500 的每张原片里本来就存着两幅衍生图，直接切出来比生成快两个数量级：
+
+| 用途 | 来源 | 尺寸 | 大小 |
+|---|---|---|---|
+| 网格 | EXIF IFD1 缩略图 | 320×216 | 3.6–14 KB |
+| 灯箱 | MPF 附加图 | 1616×1080 | 391–832 KB |
+
+`nxthumb.arm`（6,032 B，纯 syscall，无 libc）解析 IFD/MPF 后把字节段直接写到
+stdout。**不解码、不分配像素、不加锁、不落缓存。**
+
+机上实测（13.9 MB 原片，Wi-Fi 端到端，`/proc` 采样峰值 RSS）：
+
+| 操作 | 耗时 | 峰值 RSS | 输出 |
+|---|---|---|---|
+| 网格直切 | **148 ms** | <1 MB | 12 KB |
+| 灯箱直切（MPF） | **759 ms** | <1 MB | 811 KB |
+| 转码网格（冷） | 7,970 ms | 8.7 MB | 22 KB |
+| 转码灯箱（冷） | 7,452–20,030 ms | 31.2 MB | 246 KB |
+| 转码灯箱（命中缓存） | 399 ms | — | 246 KB |
+| 预热 60 张（原：约 28 分钟转码） | **1,990 ms** | — | 60/60 直切 |
+
+灯箱因此**默认走 MPF**：多传约 560 KB，换掉每张新照片一次 7.5–20 秒的等待。
+退回转码：`touch /tmp/nx/thumb/mpf-off`。
+
+竖拍照片的像素不旋转，方向只写在 EXIF 里。直切时若 orientation≠1，`nxthumb`
+在流首插入一段 36 字节的最小 APP1，浏览器按 `image-orientation: from-image`
+自行转正 —— 前端无需改动。
+
+转码路径完整保留（PNG、外机照片、损坏文件、`mpf-off`），仍受限并发 1、像素上限
+24/32 MiB、超时 20/30 秒约束。转码前还会检查可用内存：
+
+> 3.5 内核没有 `MemAvailable`，而 `MemFree` 单独看会误导 —— 转码把 MemFree
+> 压到约 8 MB 的同时，内核在回收页缓存供它使用。真正的余量是
+> `MemFree + Cached`，实测转码期最低约 62 MB。低于 **40 MB** 时直接拒绝转码：
+> 一次 OOM 会带走相机守护进程，只能拔电池恢复。
+
+**尚未实测**：录像期间浏览。`st key click rec` 在 1.12 上 segfault，
+无法脚本开录；需要手动按机身 REC，然后跑
+`python3 test_server/bench-record-concurrency.py --host <ip>`，脚本会检测到
+已在录像并接管。要验证的是转码 31 MB 峰值叠加录像编码缓冲后余量还剩多少，
+据此校准上面那个 40 MB 阈值。
+
+Section 1–6 below describe the original converter-only design. It still applies
+to the fallback path; the slicing path is additive.
+
+---
+
 ## 1. 方案概述 / Overview
 
 **问题 / Problem**：`nx-rc/web_root/js/gallery.js` 相册网格原以原图 URL 作缩略图
@@ -18,9 +67,9 @@
 | 层 / Layer | 做法 / Approach |
 |---|---|
 | 前端 / Frontend (B) | 缩略图改请求相机端 CGI；分批渲染（30 张/批）；IntersectionObserver 视口加载/释放内存 |
-| 相机端 / Camera (A) | 新增 `thumb-cgi`（busybox httpd CGI），用内置 ImageMagick `convert` 生成小图并缓存 SD 卡 |
+| 相机端 / Camera (A) | 优先 `nxthumb.arm` 直切内嵌图；无法直切时用 ImageMagick `convert` 生成并缓存 SD 卡 |
 
-效果：单张缩略图 4–8MB → 15–30KB（约 200 倍），长列表 DOM 与解码内存均受控。
+效果：单张缩略图 4–8MB → 12–30KB（约 200 倍），长列表 DOM 与解码内存均受控。
 
 ---
 

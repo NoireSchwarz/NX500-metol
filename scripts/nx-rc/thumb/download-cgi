@@ -1,0 +1,65 @@
+#!/bin/sh
+# Stream one original photo or video from DCIM as a browser attachment.
+LC_ALL=C
+export LC_ALL
+BUSYBOX=/opt/usr/nx-ks/busybox
+METHOD=${REQUEST_METHOD:-GET}
+
+fail() {
+    printf 'Status: %s\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\n\r\n' "$1"
+    [ "$METHOD" = HEAD ] || printf '%s\n' "$1"
+    exit 0
+}
+
+case "$METHOD" in
+    GET|HEAD) ;;
+    *) fail '405 Method Not Allowed' ;;
+esac
+case "${QUERY_STRING:-}" in
+    *%0[0-9a-fA-F]*|*%1[0-9a-fA-F]*|*%7[fF]*) fail '400 Bad Request' ;;
+    f=?*) ;;
+    *) fail '400 Bad Request' ;;
+esac
+REL=$("$BUSYBOX" httpd -d "${QUERY_STRING#f=}") || fail '400 Bad Request'
+case "/$REL/" in
+    *//*|*/./*|*/../*|*\\*|*[[:cntrl:]]*) fail '400 Bad Request' ;;
+esac
+
+NAME=${REL##*/}
+case "$NAME" in
+    *.*) ;;
+    *) fail '404 Not Found' ;;
+esac
+EXT=$(printf '%s' "${NAME##*.}" | tr 'A-Z' 'a-z')
+case "$EXT" in
+    jpg|jpeg|png|gif|bmp|tif|tiff|mov|mp4|avi|3gp|m4v|webm) ;;
+    *) fail '404 Not Found' ;;
+esac
+
+DCIM=
+for card in /mnt/mmc /tmp/mmc /mnt/sd /tmp/sd; do
+    if [ -d "$card/DCIM" ]; then
+        DCIM=$(readlink -f "$card/DCIM")
+        break
+    fi
+done
+[ -n "$DCIM" ] || fail '404 Not Found'
+SOURCE=$(readlink -f "$DCIM/$REL") || fail '404 Not Found'
+case "$SOURCE" in
+    "$DCIM/"*) ;;
+    *) fail '404 Not Found' ;;
+esac
+[ -f "$SOURCE" ] && [ -r "$SOURCE" ] || fail '404 Not Found'
+exec 3< "$SOURCE"
+SIZE=$(stat -Lc %s /proc/self/fd/3) || fail '404 Not Found'
+
+case "$REL" in
+    */*) DIR=${REL%/*}; NAME=${DIR##*/}_$NAME ;;
+esac
+FALLBACK=$(printf '%s' "$NAME" | sed 's/[^a-zA-Z0-9._-]/_/g')
+ENCODED=$(printf '%s' "$NAME" | od -An -v -t x1 | awk '{ for (i=1; i<=NF; i++) printf "%%%s", $i }')
+printf 'Content-Type: application/octet-stream\r\n'
+printf 'Content-Length: %s\r\n' "$SIZE"
+printf "Content-Disposition: attachment; filename=\"%s\"; filename*=UTF-8''%s\r\n" "$FALLBACK" "$ENCODED"
+printf 'X-Content-Type-Options: nosniff\r\nCache-Control: no-store\r\n\r\n'
+[ "$METHOD" = HEAD ] || exec cat <&3

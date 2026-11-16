@@ -1,5 +1,6 @@
 """Exercise launch caching and the physical-key entry without camera commands."""
 import os
+import shutil
 import subprocess
 import tempfile
 import time
@@ -23,6 +24,7 @@ killall) exit 0 ;;
 setsid) exec "$@" ;;
 nice) shift 2; exec "$@" ;;
 cksum) exec cksum "$@" ;;
+flock|mv|mkdir) exec "$cmd" "$@" ;;
 *) echo "$cmd: applet not found" >&2; exit 127 ;;
 esac
 ''')
@@ -32,9 +34,11 @@ esac
             script("br_menu.sh", 'echo UNEXPECTED_PREPARE >> "$CALLS"\n')
             launcher = (REPO / "scripts/nxui.sh").read_text().replace("/tmp/nxui", str(root / "nxui-tmp")).replace("/mnt/mmc/nxui", str(root / "card")).replace("/opt/usr/nx-ks", str(root)).replace("/mnt/mmc/filmlab", str(lab)).replace("/etc/version.info", str(version))
             script("nxui.sh", launcher)
+            shutil.copyfile(REPO / "scripts/nxstore.sh", root / "nxstore.sh")
             (root / "nxui/enabled").touch()
             recipe = lab / "recipes.json"; recipe.write_text("first")
-            env = dict(os.environ, CALLS=str(log))
+            env = dict(os.environ, CALLS=str(log), NX_RAM=str(root / "ram"),
+                       NX_BB=str(root / "busybox"))
             def run(mode):
                 result = subprocess.run(["sh", str(root / "nxui.sh"), mode], env=env, capture_output=True, text=True, timeout=5)
                 self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
@@ -50,6 +54,10 @@ esac
             run("filmlab")
             self.assertEqual(log.read_text().splitlines().count("EXPORT"), 2)
             (lab / "recipes.txt").unlink(); run("filmlab")
+            self.assertEqual(log.read_text().splitlines().count("EXPORT"), 3)
+            recipe.rename(lab / "recipes.json.nx-prev")
+            run("filmlab")
+            self.assertEqual(recipe.read_text(), "other")
             self.assertEqual(log.read_text().splitlines().count("EXPORT"), 3)
             key = (REPO / "scripts/EV_EV.sh").read_text().replace("/opt/usr/nx-ks", str(root))
             script("EV_EV.sh", key)

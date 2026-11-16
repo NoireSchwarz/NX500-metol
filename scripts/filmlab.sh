@@ -49,6 +49,9 @@ command -v nx_swap >/dev/null 2>&1 || nx_swap() {
 LAB=/mnt/mmc/filmlab
 RECIPE=$LAB/recipes.json
 LOG=$LAB/last.log
+if [ -f "$RECIPE.nx-prev" ] && command -v nx_recover >/dev/null 2>&1; then
+  nx_recover "$RECIPE" || { echo "REJECT: cannot recover recipes.json"; exit 1; }
+fi
 
 # ---- 外置设置数据（filmlab.conf；2026-10-09）----
 #   「校准结果 / 开关 / 通道参数」等【数据】放这里 ⇒ 改数据不改脚本。
@@ -205,13 +208,14 @@ FILMLAB_ENC_RGB=${FILMLAB_ENC_RGB:-color}
 
 # ---- userdata(20) 读写（★ getusr/setusr 只认【十进制索引或名字】）----
 getusr20() {
-  PW_READOUT=$(st cap capdtm getusr 20 2>/dev/null)
+  PW_READOUT=$(st cap capdtm getusr 20 2>/dev/null) || return 1
   case "$PW_READOUT" in
     *"UserData is "*"(0x"*")"*)
       PW_READOUT=${PW_READOUT#*UserData is }
       PW_READOUT=${PW_READOUT#*(}
       printf '%s\n' "${PW_READOUT%%)*}"
       ;;
+    *) return 1 ;;
   esac
 }
 setusr20() { st cap capdtm setusr 20 "$1" >/dev/null 2>&1; }
@@ -270,17 +274,19 @@ pw_force_reload() {
 #     （GitHub Discussion 2026-11-12，ssam87 报告："custom 1 and 2 were both affected"）
 #   放在直推之前做而不是之后：切档本身不会搬参数（已证伪），早切不影响画面，
 #   只是把"归属窗口"关进 CUSTOM1 —— 那里本来就是配方要写的地方。
-#   失败不致命（画面优先），但必须留痕：污染发生了就没有还原点。
+#   每次直推前确认实际档位。面板打开时的档位只用于恢复。
 pw_preenter_custom1() {
-  PREKNOWN=${1:-}
-  if [ -z "$PREKNOWN" ]; then
-    PREKNOWN=$(getusr20)
-  fi
+  PREKNOWN=$(getusr20) || { echo "REJECT: cannot read current PW field"; return 1; }
+  case "$PREKNOWN" in
+    0x14000[0123456789ac]) ;;
+    *) echo "REJECT: unsupported current PW field ($PREKNOWN)"; return 1 ;;
+  esac
   if [ "$PREKNOWN" = "0x140009" ]; then
     PREENTER="already"
     return 0
   fi
-  setusr20 0x140009
+  rm -f "$PW_CACHE" || return 1
+  setusr20 0x140009 || { echo "REJECT: cannot select CUSTOM1"; return 1; }
   PRE_TRIES=0
   while :; do
     PRENOW=$(getusr20)
@@ -290,7 +296,7 @@ pw_preenter_custom1() {
     PRE_TRIES=$((PRE_TRIES + 1))
   done
   PREENTER="FAIL(now=$PRENOW was=$PREKNOWN)"
-  echo "  ⚠ 直推前切 CUSTOM1 未确认（$PREENTER）—— 非目标槽可能被污染"
+  echo "REJECT: CUSTOM1 not confirmed ($PREENTER)"
   return 1
 }
 
@@ -304,6 +310,14 @@ pw_preenter_custom1() {
 #   COLOR （R/G/B）  : (gain16 << 16) | 0x00FF   gain16 = ceil(值×2032/100)
 pw_raw_code()  { U=$(( ($1 * 16 - 145) & 0xFFFF )); printf "0x%04x%04x" "$U" 0xD80A; }
 pw_gain_code() { G=$(( ($1 * 2032 + 99) / 100 ));   printf "0x%04x%04x" "$G" 0x00FF; }
+
+PW_CACHE=${NX_RAM:-/tmp/nx}/filmlab/last-push
+
+pw_lock() {
+  [ -d "${PW_CACHE%/*}" ] || $BB mkdir -p "${PW_CACHE%/*}" || return 1
+  exec 8>"${PW_CACHE%/*}/pw.lock" || return 1
+  $BB flock -n 8 || { echo "REJECT: another FilmLab command is active"; return 1; }
+}
 
 # pw_direct <R> <G> <B> <HUE> <SAT> <SHARP> <CON> [--yes]
 #   默认 dry-run（只打印）；--yes 才真发。七维任一为空 ⇒ 拒绝（防静默坏值）。
@@ -319,11 +333,11 @@ pw_direct() {
   #   缓存放 tmpfs：重启即清；超过 90 秒没用过就作废 —— 相机别处改过 PW 时
   #   靠这个兜底，宁可多推一次也不要按旧值算差异。
   #   非 UI（CLI / neutral）永远全量推：诊断路径不要聪明。
-  FLCACHE=${NX_RAM:-/tmp/nx}/filmlab/last-push
+  YES="$8"
   PICK=
   FULL=1
-  if [ "${UI_REQUEST:-0}" = 1 ] && [ -f "$FLCACHE" ]; then
-    read -r CT C1 C2 C3 C4 C5 C6 C7 < "$FLCACHE" 2>/dev/null || :
+  if [ "$YES" = "--yes" ] && [ "${UI_REQUEST:-0}" = 1 ] && [ -f "$PW_CACHE" ]; then
+    read -r CT C1 C2 C3 C4 C5 C6 C7 < "$PW_CACHE" 2>/dev/null || :
     read -r UP < /proc/uptime 2>/dev/null || UP=0
     UP=${UP%%.*}
     if [ -n "${CT:-}" ] && [ "${UP:-0}" -ge "$CT" ] 2>/dev/null && [ $((UP - CT)) -le 90 ]; then
@@ -345,29 +359,32 @@ pw_direct() {
   elif [ -z "$PICK" ]; then
     # 七维一个都没变：连进程都不用起（省掉 pwsend 的 ~250ms）
     echo "  ③ PW直推: 七维与上次相同 —— 不发送"
-    _pw_cache_put "$1 $2 $3 $4 $5 $6 $7"
     return 0
   fi
   ARGS="$PICK 0x13B 1"
-  YES="$8"
   # ★ 10-17：条间 150ms 是 A1 时代的保守值，svdm 是同步返回（rc=0 即已入 MCB）。
   #   浏览预览用 FILMLAB_PWSLEEP=20（2026-11-14 由 40 收到 20），批量写槽仍用 150。
-  [ "$YES" = "--yes" ] && ARGS="$ARGS --sleep ${FILMLAB_PWSLEEP:-150}"
+  if [ "$YES" = "--yes" ]; then
+    ARGS="$ARGS --sleep ${FILMLAB_PWSLEEP:-150}"
+    # A failed sequence may have partially updated the ISP.
+    rm -f "$PW_CACHE" || return 1
+  fi
   echo "  ③ PW直推（A2 档位池直写；$([ "$YES" = "--yes" ] && echo 真发 || echo dry-run)）:"
   echo "     $PWSEND seq $ARGS $YES"
   # shellcheck disable=SC2086
   "$PWSEND" seq $ARGS $YES || return 1
-  _pw_cache_put "$1 $2 $3 $4 $5 $6 $7"
+  if [ "$YES" = "--yes" ]; then _pw_cache_put "$1 $2 $3 $4 $5 $6 $7"; fi
   return 0
 }
 
 # 记录"上一次真发成功"的 7 维（tmpfs）。时间戳用 /proc/uptime 取整秒 ——
 # 比 date 少一次 fork，也不受 RTC 跳变影响。
 _pw_cache_put() {
-  FLCACHE=${NX_RAM:-/tmp/nx}/filmlab/last-push
-  [ -d "${FLCACHE%/*}" ] || $BB mkdir -p "${FLCACHE%/*}" 2>/dev/null
+  [ -d "${PW_CACHE%/*}" ] || $BB mkdir -p "${PW_CACHE%/*}" 2>/dev/null
   read -r UP < /proc/uptime 2>/dev/null || UP=0
-  printf '%s %s\n' "${UP%%.*}" "$1" > "$FLCACHE" 2>/dev/null
+  if printf '%s %s\n' "${UP%%.*}" "$1" > "$PW_CACHE.$$.tmp"; then
+    mv -f "$PW_CACHE.$$.tmp" "$PW_CACHE" || rm -f "$PW_CACHE.$$.tmp"
+  fi
   return 0
 }
 
@@ -695,12 +712,9 @@ list)
   echo
   printf "%-14s %-22s %s\n" "KEY" "LABEL" "7 维 (R/G/B/HUE/SAT/SHARP/CON)"
   echo "------------------------------------------------------------------------"
-  jlist | while read k; do
-    [ -z "$k" ] && continue
-    R=$(jval $k R_COLOR); G=$(jval $k G_COLOR); B=$(jval $k B_COLOR)
-    H=$(jval $k HUE);     S=$(jval $k SATURATION)
-    P=$(jval $k SHARPNESS); C=$(jval $k CONTRAST)
-    printf "%-14s %-22s %s/%s/%s %s/%s/%s/%s\n" "$k" "$(jlabel $k)" \
+  jtable | while IFS='|' read -r k label R G B H S P C; do
+    case "$k" in ''|_*) continue ;; esac
+    printf "%-14s %-22s %s/%s/%s %s/%s/%s/%s\n" "$k" "$label" \
       "$R" "$G" "$B" "$H" "$S" "$P" "$C"
   done
   echo
@@ -745,7 +759,7 @@ neutral)
   # ★ 2026-11-14：直推前落到 CUSTOM1。与 apply 同理 —— 否则「还原」的中性值会被
   #   相机归属到用户当时那一档（自定义2/3），把该档的槽写成 100/100/100 10/10/10/10。
   #   "只改运行时"这个说法在 A2 直推面前不成立。
-  pw_preenter_custom1 || :
+  pw_lock && pw_preenter_custom1 || exit 1
   if pw_direct 100 100 100 10 10 10 10 --yes; then
     log "neutral -> 100/100/100 10/10/10/10 pre=$PREENTER"
     echo "✓ neutral (100/100/100 10/10/10/10)"
@@ -762,10 +776,8 @@ apply)
     echo "REJECT: preview/commit requires FILMLAB_PW=1, pwsend.arm and verified A2 firmware"
     exit 1
   fi
-  # Follow the field selected at the moment this request is executed. Never
-  # silently fall back to CUSTOM1 when a read fails or an enum is unsupported.
-  # ★ 10-17：允许调用方（nxui）用 FILMLAB_ENUM_CACHE 提供最近一次读到的档位
-  #   （格式 0x1400XX），省掉每次 1.4s 的 getusr。缓存无效时会落到 REJECT。
+  pw_lock || exit 1
+  # UI sends against CUSTOM1 and uses the opening enum only for restore.
   if [ "$UI_REQUEST" = 1 ]; then
     # ★★ UI 快路径（2026-10-17 实测定根因）：预览/提交固定以 CUSTOM1（slot 9）为画布。
     #   原因一（性能）：A2 提交位 0x13B 本身就把运行时档位切到 field 10。若"跟随当前
@@ -777,8 +789,8 @@ apply)
     #     commit 才把档位还回打开面板时那一档（FILMLAB_ENUM_CACHE 由 nxui 传入）。
     SLOT=9
     case "${FILMLAB_ENUM_CACHE:-}" in
-      0x1400*) TARGET_PW="$FILMLAB_ENUM_CACHE" ;;
-      *)       TARGET_PW="0x140009" ;;
+      0x14000[0123456789ac]) TARGET_PW="$FILMLAB_ENUM_CACHE" ;;
+      *) TARGET_PW= ;;
     esac
     ENUM=9
   else
@@ -790,25 +802,6 @@ apply)
     TARGET_PW=$(printf "0x%06x" $((0x140000 + ENUM)))
   fi
   apply_slot_valid "$SLOT" || { echo "REJECT: unsupported PW slot $SLOT"; exit 1; }
-  # ★★ 2026-11-14 修复（ssam87 报告）：A2 直推的改动会被相机归属到「发送那一刻
-  #   仍在用的档位」。用户停在自定义2 时预览/提交配方 ⇒ 自定义2 也被改成配方值，
-  #   而引擎只 set 过 slot 9、backup 也只有 slot 9（⇒ 无还原点）。
-  #   ① 先切 CUSTOM1 再直推：把归属窗口关进本来就该被写的那一档。
-  #   ② 打开面板时所在档位的槽，补一份备份。
-  #   代价：仅当 cache 表明"当前不在 CUSTOM1"时才多付一次 st（~1.3s）；
-  #   停在 CUSTOM1（常态）零开销。
-  if [ "$UI_REQUEST" = 1 ]; then
-    case "${FILMLAB_ENUM_CACHE:-}" in
-      0x140009) PREENTER="already" ;;
-      *)        pw_preenter_custom1 "${FILMLAB_ENUM_CACHE:-}" ;;
-    esac
-    if [ -n "${TARGET_PW:-}" ] && [ "$TARGET_PW" != "0x140009" ]; then
-      TSLOT=$(slot_of_enum "$TARGET_PW" 2>/dev/null) || TSLOT=""
-      if [ -n "$TSLOT" ] && [ "$TSLOT" != "$SLOT" ]; then
-        backup_slot "$TSLOT" || echo "  ⚠ 备份 slot$TSLOT 失败（继续；该档位将没有还原点）"
-      fi
-    fi
-  fi
   echo ">>> 应用 '$REC' -> slot $SLOT (enum $ENUM)"
   # ★★★ 2026-10-08 加固：先取全部 7 维，★ 任一为空就【拒绝写入】。
   #   起因（U2 上机实测，用户报告）：/mnt/mmc/filmlab/recipes.json 缺失时 jval 返回空串，
@@ -837,6 +830,14 @@ apply)
     [ "$VALUE" -le "$VALUE_MAX" ] || { echo "REJECT: recipe value out of range"; exit 1; }
     VALUE_PARAM=$((VALUE_PARAM + 1))
   done
+  if [ "$UI_REQUEST" = 1 ]; then
+    pw_lock && pw_preenter_custom1 || exit 1
+    TARGET_PW=${TARGET_PW:-$PREKNOWN}
+    if [ "$TARGET_PW" != "0x140009" ]; then
+      TSLOT=$(slot_of_enum "$TARGET_PW")
+      backup_slot "$TSLOT" || echo "  ⚠ 备份 slot$TSLOT 失败"
+    fi
+  fi
   # ★ 10-17：预览不写槽、不备份 —— 画面完全由 A2 直推决定，槽只在 commit 落盘时写。
   #   省掉 7×prefman set + 7×prefman get（≈0.4s），浏览过程也不改 eMMC 侧数据。
   if [ "$UI_REQUEST" = 1 ] && [ "$FILMLAB_SAVE" != 1 ]; then
@@ -883,6 +884,7 @@ apply)
     RELOAD="already"
   else
     [ "$UI_REQUEST" != 1 ] || echo 'NXUI_STAGE restore'
+    [ "$TARGET_PW" = "0x140009" ] || rm -f "$PW_CACHE"
     # commit 的 A2 发送成功后运行时档位必为 CUSTOM1 ⇒ 传进去省一次 getusr
     if [ "$PWSTAT" = "direct" ]; then
       pw_force_reload "$TARGET_PW" "0x140009"
@@ -1151,7 +1153,8 @@ pwpush)
   esac
   echo "pwpush '$REC' => R/G/B=$V0/$V1/$V2 HUE=$V3 SAT=$V4 SHARP=$V5 CON=$V6"
   if [ "$SLOT" = "--yes" ]; then
-    pw_direct "$V0" "$V1" "$V2" "$V3" "$V4" "$V5" "$V6" --yes
+    pw_preenter_custom1 || exit 1
+    pw_direct "$V0" "$V1" "$V2" "$V3" "$V4" "$V5" "$V6" --yes || exit 1
   else
     echo "（dry-run；加 --yes 真发）"
     pw_direct "$V0" "$V1" "$V2" "$V3" "$V4" "$V5" "$V6"
@@ -1193,12 +1196,13 @@ mkgui)
   TMD5=""
   [ -f "$TMD5F" ] && read -r TMD5 < "$TMD5F" 2>/dev/null
   if [ ! -s "$TBL" ] || [ "$RMD5" != "$TMD5" ]; then
-    jtable > "$TBL.tmp" 2>/dev/null
-    if [ -s "$TBL.tmp" ]; then
-      nx_swap "$TBL.tmp" "$TBL"
+    TABLE_TMP=$TBL.$$.tmp
+    jtable > "$TABLE_TMP" 2>/dev/null
+    if [ -s "$TABLE_TMP" ]; then
+      nx_swap "$TABLE_TMP" "$TBL" || { rm -f "$TABLE_TMP"; exit 1; }
       printf '%s\n' "$RMD5" > "$TMD5F"
     else
-      rm -f "$TBL.tmp"
+      rm -f "$TABLE_TMP"
     fi
   fi
   [ -s "$TBL" ] || { echo "mkgui: 配方库为空（表为空），保持原菜单不动"; exit 1; }
@@ -1261,7 +1265,7 @@ mkgui)
   } >> "$OUT.tmp"
 
   # ★ 原子替换：mod_gui 只会看到完整菜单文件，绝不读到半成品
-  nx_swap "$OUT.tmp" "$OUT"
+  mv -f "$OUT.tmp" "$OUT" || exit 1
   # ★ 记录本次生成所用的输入指纹（下次比对；内容哈希，跨文件系统可靠）
   printf '%s\n' "$SIG" > "$SIGF"
 
@@ -1281,7 +1285,7 @@ export)
   #     就 all-or-nothing 拒载（日志 "empty label"、READY recipes=0）⇒ 面板配方全空。
   #     坏表写盘比不写盘更糟，所以这里宁可失败也不落地。
   OUT=$LAB/recipes.txt
-  TMP=$OUT.tmp
+  TMP=$OUT.$$.tmp
   jtable > $TMP
   N=$(grep -c . $TMP 2>/dev/null)
   case "$N" in ""|*[!0-9]*) N=0 ;; esac
@@ -1289,7 +1293,7 @@ export)
   [ "$N" -gt 0 ] && EMPTY=$($BB awk -F'|' '$2 == "" { n++ } END { print n + 0 }' "$TMP" 2>/dev/null)
   case "$EMPTY" in ""|*[!0-9]*) EMPTY=0 ;; esac
   if [ "$N" -gt 0 ] && [ "$EMPTY" -eq 0 ]; then
-    nx_swap "$TMP" "$OUT"
+    nx_swap "$TMP" "$OUT" || { rm -f "$TMP"; echo "export: cannot update $OUT"; exit 1; }
     echo "export: 已生成 $OUT — $N 个配方"
   else
     rm -f $TMP

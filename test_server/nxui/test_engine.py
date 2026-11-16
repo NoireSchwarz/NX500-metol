@@ -85,7 +85,7 @@ class EngineHarness(unittest.TestCase):
                              'echo "value = $v"; fi; exit 0')
         self.stub("st", '''echo "st $*" >> "$CALLS"
 case "$3" in
-  getusr) echo "UserData is CURRENT ($(cat "$CURRENT_PW_FILE"))" ;;
+  getusr) [ "${READ_FAIL:-0}" != 1 ] || exit 7; echo "UserData is CURRENT ($(cat "$CURRENT_PW_FILE"))" ;;
   setusr) [ "${RESTORE_FAIL:-0}" != 1 ] || exit 8; echo "$5" > "$CURRENT_PW_FILE" ;;
 esac
 exit 0''')
@@ -232,11 +232,56 @@ class UiEngineTests(EngineHarness):
                          "preview 不应创建备份目录")
         self.assertIn(push_line(), calls)
 
-    def test_preview_does_not_touch_the_profile_pointer(self):
+    def test_preview_reads_actual_field_even_if_opening_profile_differs(self):
         r, calls = self.ui("preview", env={"FILMLAB_ENUM_CACHE": "0x140003"})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("getusr 20", calls)
         self.assertNotIn("setusr 20", calls)
         self.assertEqual(self.current.read_text().strip(), "0x140009")
+
+    def test_external_field_change_forces_selection_and_full_send(self):
+        self.assertEqual(self.ui("preview")[0].returncode, 0)
+        self.current.write_text("0x14000a\n")
+        self.log.write_text("")
+        r, calls = self.ui("preview")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertLess(calls.index("setusr 20 0x140009"), calls.index(push_line()))
+
+    def test_failed_preselection_stops_preview_commit_and_neutral(self):
+        for verb in ("preview", "commit", "neutral"):
+            with self.subTest(verb=verb):
+                self.current.write_text("0x14000a\n")
+                self.log.write_text("")
+                r, calls = self.ui(verb, env={"RESTORE_FAIL": "1"})
+                self.assertNotEqual(r.returncode, 0)
+                self.assertIn("REJECT: cannot select CUSTOM1", r.stdout)
+                self.assertNotIn("pwsend", calls)
+                self.assertNotIn("prefman", calls)
+
+    def test_failed_readback_stops_before_any_camera_write(self):
+        r, calls = self.ui("preview", env={"READ_FAIL": "1"})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertNotIn("setusr 20", calls)
+        self.assertNotIn("pwsend", calls)
+
+    def test_acknowledged_switch_without_readback_stops_before_send(self):
+        self.current.write_text("0x14000a\n")
+        self.stub("busybox", 'cmd="$1"; shift; [ "$cmd" != sleep ] || exit 0; exec "$cmd" "$@"')
+        self.stub("st", '''echo "st $*" >> "$CALLS"
+case "$3" in getusr) echo "UserData is CURRENT ($(cat "$CURRENT_PW_FILE"))" ;; esac
+exit 0''')
+        r, calls = self.ui("preview")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("REJECT: CUSTOM1 not confirmed", r.stdout)
+        self.assertIn("setusr 20 0x140009", calls)
+        self.assertNotIn("pwsend", calls)
+
+    def test_invalid_recipe_does_not_switch_fields(self):
+        self.current.write_text("0x14000a\n")
+        r, calls = self.ui("preview", "missing_recipe")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertNotIn("setusr 20", calls)
+        self.assertNotIn("pwsend", calls)
 
     # ---- P2：只推变化维（2026-11-14）----
     def test_preview_sends_only_changed_dims(self):
@@ -264,11 +309,21 @@ class UiEngineTests(EngineHarness):
     def test_preview_same_recipe_twice_sends_nothing(self):
         r, _ = self.ui("preview")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        cache = self.ram / "filmlab/last-push"
+        old_mtime = cache.stat().st_mtime_ns
         self.log.write_text("")
         r, calls = self.ui("preview")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertNotIn("pwsend ", calls, "七维没变就不该起后端进程")
         self.assertIn("七维与上次相同", r.stdout)
+        self.assertEqual(cache.stat().st_mtime_ns, old_mtime)
+
+    def test_partial_send_failure_invalidates_previous_cache(self):
+        self.assertEqual(self.ui("preview")[0].returncode, 0)
+        cache = self.ram / "filmlab/last-push"
+        self.stub("pwsend.arm", "exit 9")
+        self.assertNotEqual(self.ui("preview", "gold200")[0].returncode, 0)
+        self.assertFalse(cache.exists())
 
     # ---- commit：只写 slot 9，且必须落盘 ----
     def test_commit_writes_slot9_and_saves(self):

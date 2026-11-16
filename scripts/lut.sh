@@ -68,6 +68,8 @@ command -v nx_put >/dev/null 2>&1 || nx_put() {
     $BB sync 2>/dev/null
     nx_swap "$2.tmp" "$2"
 }
+command -v nx_recover >/dev/null 2>&1 || nx_recover() { return 0; }
+command -v nx_remove >/dev/null 2>&1 || nx_remove() { $BB rm -f "$1"; }
 
 ST=$(nx_ram lut)                # 易失：还原点、日志、标志（tmpfs，重启即清）
 PD=/mnt/mmc/lut/state           # 持久：只有库顺序与转换缓存
@@ -154,9 +156,12 @@ valid_name() {
 # 重建 order：已登记且仍存在的保持顺序与星标，新文件按名字追加，消失的丢弃。
 order_sync() {
     [ -d "$LAB" ] || return 0
-    $BB mkdir -p "$ST" "$PD"
-    $BB ls "$LAB" 2>/dev/null | $BB grep -E '\.(cube|bin)$' \
+    $BB mkdir -p "$ST" "$PD" || return 1
+    nx_recover "$ORD" || return 1
+    $BB ls "$LAB" > "$ST/.ls" 2>/dev/null || return 1
+    $BB grep -E '\.(cube|bin)$' "$ST/.ls" \
         | $BB sed 's/\.[^.]*$//' | $BB grep -v '^_' | $BB sort -u > "$ST/.names"
+    $BB rm -f "$ST/.ls"
     if [ -s "$ORD" ]; then
         $BB awk '
             FILENAME==ARGV[1] { have[$0]=1; next }
@@ -187,12 +192,11 @@ order_sync() {
     elif [ ! -s "$ST/.order.1" ]; then
         # 空库：写一个 0 字节 order 没有意义（读侧本来就按「无 order」处理），
         # 反而多一次目录项增删。直接删掉。
-        $BB rm -f "$ORD"
+        nx_remove "$ORD" || return 1
     else
         # ★ 这里原来是 `mv -f "$ST/.order.1" "$ORD"` —— 源在 tmpfs、目标在
         #   exFAT，是跨文件系统的 rename+copy，中途掉电就留下半截 order。
-        #   统一走 nx_put：同目录 .tmp → sync → 字节校验 → rename。
-        nx_put "$ST/.order.1" "$ORD" || nx_swap "$ST/.order.1" "$ORD"
+        nx_put "$ST/.order.1" "$ORD" || return 1
         $BB rm -f "$ST/.order.1" 2>/dev/null
     fi
     $BB rm -f "$ST/.names"
@@ -351,6 +355,13 @@ commit_table() {
 }
 
 case "${1:-status}" in
+list|fav|move|index|del)
+    exec 8>"$ST/library.lock" || die "cannot open library lock"
+    $BB flock -x 8 || die "cannot lock library"
+    ;;
+esac
+
+case "${1:-status}" in
 video)
     shift
     [ -x "$D/lut_video.sh" ] || die "missing lut_video.sh"
@@ -358,7 +369,7 @@ video)
     ;;
 list)
     [ -d "$LAB" ] || die "no $LAB"
-    order_sync
+    order_sync || die "cannot update order"
     only_fav=0
     [ "${2:-}" = "--fav" ] && only_fav=1
     # order 文件在空库时会被 order_sync 删掉（空库没有顺序可言），
@@ -380,17 +391,17 @@ fav)
     name=${2:-}
     valid_name "$name" || die "bad name"
     [ -d "$LAB" ] || die "no $LAB"
-    order_sync
+    order_sync || die "cannot update order"
     if order_has "*$name"; then
         # 取消收藏：去掉星标，留在原位（不做位置回弹，用户调过的顺序不被打乱）
         $BB awk -v k="$name" '{ if ($0 == "*" k) print k; else print }' "$ORD" > "$ST/.o"
-        nx_swap "$ST/.o" "$ORD"
+        nx_swap "$ST/.o" "$ORD" || die "cannot update order"
         echo "OK unfav $name"
     else
         # 新收藏 = 排到最前（收藏是「前排」语义，不是筛选维度）
         $BB awk -v k="$name" 'BEGIN { print "*" k }
                               { if ($0 == k || $0 == "*" k) next; print }' "$ORD" > "$ST/.o"
-        nx_swap "$ST/.o" "$ORD"
+        nx_swap "$ST/.o" "$ORD" || die "cannot update order"
         echo "OK fav $name"
     fi
     ;;
@@ -398,7 +409,7 @@ fav)
 move)
     name=${2:-}; dir=${3:-up}
     valid_name "$name" || die "bad name"
-    order_sync
+    order_sync || die "cannot update order"
     order_has "$name" || order_has "*$name" \
         || die "not in library: $name"
     $BB awk -v k="$name" -v dir="$dir" '
@@ -416,14 +427,13 @@ move)
             for (i=1;i<=NR;i++) print line[i]
         }
     ' "$ORD" > "$ST/.o"
-    nx_put "$ST/.o" "$ORD" || nx_swap "$ST/.o" "$ORD"
-    $BB rm -f "$ST/.o" 2>/dev/null
+    nx_swap "$ST/.o" "$ORD" || die "cannot update order"
     echo "OK moved $name $dir"
     ;;
 
 index)
     [ -d "$LAB" ] || die "no $LAB"
-    order_sync
+    order_sync || die "cannot update order"
     _n=0
     [ -f "$ORD" ] && _n=$($BB wc -l < "$ORD" 2>/dev/null | $BB tr -d ' ')
     echo "OK order rebuilt: ${_n:-0} entries, $(order_fav_count) fav"
@@ -443,9 +453,7 @@ del)
     done
     [ -n "$moved" ] || die "not found: $name (.cube or .bin)"
     $BB rm -f "$CV/$name.bin" "$CV/$name.sum" 2>/dev/null
-    order_sync
-    $BB awk -v k="$name" '{ if ($0 != k && $0 != "*" k) print }' "$ORD" > "$ST/.o"
-    nx_swap "$ST/.o" "$ORD"
+    order_sync || die "look moved to trash, cannot update order"
     # 正在生效的就是它 ⇒ 一并还原，否则登记表指向一张已下架的表
     if [ -f "$ST/current" ] && [ "$(cat "$ST/current")" = "$name" ]; then
         sh "$0" off >/dev/null 2>&1 && echo "OK active look removed, restored to factory"

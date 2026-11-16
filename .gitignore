@@ -147,6 +147,12 @@ docs/discovery/tools/*.pyc
 # ★ 原则：源码 + 文档 + 小工具入库；固件镜像 / RAW / 编译产物 / 第三方二进制不入库
 # —— 交叉编译产物 ——
 *.arm
+# 例外：随包交付的二进制必须入库，否则干净克隆打包时会凭空少文件
+# （nxthumb.arm 漏过一次：相册静默退回逐张转码，每张 8-20 秒）
+!scripts/nx-rc/thumb/nxthumb.arm
+!scripts/lut/*.arm
+!scripts/nxui/nxui.arm
+!scripts/nxui/nxui_en.arm
 *.o
 *.pdb
 test_server/**/out/

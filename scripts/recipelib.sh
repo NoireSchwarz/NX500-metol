@@ -10,7 +10,7 @@
 #
 # 安全约定：
 #   · 每次写之前先备份到 _backup/（保留最近 10 份），出错一律从备份回滚
-#   · 写入是 .tmp → mv（同卷 rename），断电不会留下半截 JSON
+#   · 通过 nxstore 在 SD 上分阶段提交，换名中断可恢复上一版
 #   · 改完立刻重新 export，recipes.txt 与 JSON 同步；export 解析出的条目数
 #     必须等于预期，否则回滚（这一步是真正的格式校验，比数括号可靠）
 #   · 删除是物理删除（配方不是二进制表，可从 git / 备份恢复）；写盘前
@@ -36,6 +36,19 @@ KEEP=10
 ENGINE=$D/filmlab.sh
 
 die() { echo "ERR $*"; exit 1; }
+
+if [ -r "$D/nxstore.sh" ]; then . "$D/nxstore.sh"; fi
+case "${1:-list}" in
+    move|del|restore|backup)
+        [ -n "${NXSTORE_LOADED:-}" ] || die "missing nxstore.sh"
+        lock_dir=$(nx_ram filmlab)
+        exec 8>"$lock_dir/recipes.lock" || die "cannot open recipe library lock"
+        $BB flock -x 8 || die "cannot lock recipe library"
+        ;;
+esac
+if [ -f "$RECIPE.nx-prev" ]; then
+    nx_recover "$RECIPE" || die "cannot recover $RECIPE"
+fi
 
 # 与面板同口径：'_' 开头是内部键（_note），不允许外部增删
 valid_key() {
@@ -173,27 +186,22 @@ re_export() {
 commit() {
     cand=$1; expect=$2
     bak=$3
-    cp "$cand" "$RECIPE.tmp" || die "cannot stage"
-    # # exFAT 不覆盖式 rename：旧目录项会留在原地（2026-11-14 机上实测，每次 +1）
-    $BB rm -f "$RECIPE" 2>/dev/null
-    $BB mv -f "$RECIPE.tmp" "$RECIPE" || die "cannot replace $RECIPE"
+    nx_put "$cand" "$RECIPE" || die "cannot replace $RECIPE (backup: $bak)"
     got=$(count_keys)
     if [ "$got" != "$expect" ]; then
-        cp "$bak" "$RECIPE"
-        re_export
+        nx_put "$bak" "$RECIPE" && re_export || die "rollback failed (backup: $bak)"
         die "count mismatch after write: $got != $expect (rolled back)"
     fi
     if ! re_export; then
-        cp "$bak" "$RECIPE"; re_export
+        nx_put "$bak" "$RECIPE" && re_export || die "rollback failed (backup: $bak)"
         die "export failed (rolled back to $bak)"
     fi
     # export 出的扁平表行数必须等于配方数 —— 这才是真正的格式判据
     if [ -s "$TXT" ]; then
-        lines=$($BB grep -c . "$TXT" 2>/dev/null | $BB tr -d ' ')
         # recipes.txt 头部有注释行，只数配方行（key|label|...）
         rows=$($BB awk -F'|' 'NF>=9 && $2 != "" {n++} END{print n+0}' "$TXT")
         if [ "$rows" != "$expect" ]; then
-            cp "$bak" "$RECIPE"; re_export
+            nx_put "$bak" "$RECIPE" && re_export || die "rollback failed (backup: $bak)"
             die "recipes.txt has $rows usable rows, expected $expect (rolled back)"
         fi
     fi
@@ -210,7 +218,7 @@ move)
     valid_key "$key" || die "bad key"
     case "$dir" in up|down|top) ;; *) die "usage: recipelib.sh move <key> up|down|top" ;; esac
     before=$(count_keys)
-    bak=$(backup_now)
+    bak=$(backup_now) || die "backup failed"
     cand=$BAKDIR/.cand
     surgery move "$key" "$dir" > "$cand" || { $BB rm -f "$cand"; die "surgery failed"; }
     commit "$cand" "$before" "$bak"
@@ -222,7 +230,7 @@ del)
     key=${2:-}
     valid_key "$key" || die "bad key"
     before=$(count_keys)
-    bak=$(backup_now)
+    bak=$(backup_now) || die "backup failed"
     cand=$BAKDIR/.cand
     surgery del "$key" > "$cand" || { $BB rm -f "$cand"; die "surgery failed"; }
     commit "$cand" "$((before - 1))" "$bak"
@@ -246,7 +254,8 @@ verify)
     ;;
 
 backup)
-    echo "OK $(backup_now)"
+    bak=$(backup_now) || die "backup failed"
+    echo "OK $bak"
     ;;
 
 restore)
@@ -259,7 +268,7 @@ restore)
     cp "$BAKDIR/$f" "$cand" || die "cannot stage restore"
     expect=$(RECIPE="$cand"; count_keys)
     [ "$expect" -gt 0 ] || die "invalid restore snapshot"
-    cur=$(backup_now)
+    cur=$(backup_now) || die "backup failed"
     commit "$cand" "$expect" "$cur"
     $BB rm -f "$cand"
     echo "OK restored $f (previous state kept at $cur)"

@@ -16,12 +16,18 @@
 #   index.html 已带 ?v= 版本号,此后自动拉新,无需再手动清。
 # ============================================================
 
-SRC=/mnt/mmc/scripts/nx-rc          # SD 卡上的新版(本仓库母本)
-DST=/opt/usr/nx-ks/nx-rc            # 相机运行目录
-NX_KS=/opt/usr/nx-ks
+SRC=${NX_UPDATE_SRC:-/mnt/mmc/scripts/nx-rc}   # SD 卡上的新版(本仓库母本)
+DST=${NX_UPDATE_DST:-/opt/usr/nx-ks/nx-rc}     # 相机运行目录
+NX_KS=${NX_UPDATE_ROOT:-/opt/usr/nx-ks}
 
 [ -d "$SRC" ] || { echo "错误: 未找到 $SRC(SD 卡 scripts 未更新?)"; exit 1; }
 [ -d "$DST" ] || { echo "错误: 未找到 $DST(未安装过? 首次安装请用 install.sh)"; exit 1; }
+# nxthumb.arm 也在清单里:它被 .gitignore 的 *.arm 挡过,漏了会让相册
+# 静默退回逐张 ImageMagick 转码(每张 8-20 秒),所以宁可在入口就拦住。
+for file in thumb-cache.sh thumb-cgi dirlist-cgi prewarm-cgi download-cgi \
+            thumb-prewarm.sh thumb-install.sh nxthumb.arm; do
+    [ -f "$SRC/thumb/$file" ] || { echo "错误: SD 卡相册模块缺少 $file"; exit 1; }
+done
 
 echo "==> 停止 web daemon(旧进程占用的旧 JS 不释放)"
 killall -q nx-remote-controller-daemon 2>/dev/null
@@ -33,10 +39,13 @@ cp -f "$SRC/web_root/index.html"     "$DST/web_root/index.html"
 cp -f "$SRC/web_root/css/"*.css      "$DST/web_root/css/"
 cp -f "$SRC/web_root/js/"*.js        "$DST/web_root/js/"
 mkdir -p "$DST/thumb"
-cp -f "$SRC/thumb/thumb-cgi"         "$DST/thumb/"
-cp -f "$SRC/thumb/"*.sh              "$DST/thumb/"
+# *.sh 覆盖脚本,nxthumb.arm 单独列出 —— 它不匹配 *.sh,漏写就会在升级后
+# 丢执行位或干脆没到,直切随之退化。
+cp -f "$SRC/thumb/thumb-cgi" "$SRC/thumb/download-cgi" "$SRC/thumb/dirlist-cgi" \
+      "$SRC/thumb/prewarm-cgi" "$SRC/thumb/"*.sh "$SRC/thumb/nxthumb.arm" "$DST/thumb/" || exit 1
 cp -f "$SRC/thumb/README.md"         "$DST/thumb/" 2>/dev/null
-chmod +x "$DST/thumb/thumb-cgi" "$DST/thumb/"*.sh
+chmod +x "$DST/thumb/thumb-cgi" "$DST/thumb/thumb-install.sh" "$DST/thumb/thumb-prewarm.sh" \
+         "$DST/thumb/nxthumb.arm" || exit 1
 
 echo "==> 覆盖 WiFi push 同步模块"
 mkdir -p "$DST/push"
@@ -45,7 +54,7 @@ chmod +x "$DST/push/push-cgi" "$DST/push/"*.sh 2>/dev/null
 
 echo "==> 重装缩略图 CGI 与 push 接收端到 capdtm httpd(8080)"
 [ -x "$DST/push/push-install.sh" ]   && "$DST/push/push-install.sh"
-[ -x "$DST/thumb/thumb-install.sh" ] && "$DST/thumb/thumb-install.sh" start
+[ -x "$DST/thumb/thumb-install.sh" ] && "$DST/thumb/thumb-install.sh" start || exit 1
 
 sync; sync; sync
 

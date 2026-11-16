@@ -2,9 +2,7 @@
 # test_nxstore.sh — nxstore.sh 存储层的回归测试（在 WSL/桌面 Linux 上跑）
 #
 # 这一层是 2026-11-13 存储解耦的地基：lut.sh / filmlab.sh / nxui.sh 全靠它
-# 把「易失状态」和「持久状态」分开，并且保证落盘是 tmp→sync→校验→rename。
-# 之前只在现场用临时脚本验过一次，仓库里没有回归 —— 改一行就可能把
-# 「原子替换」悄悄退化成裸 mv，而现场只有 exFAT 掉电时才会发现。
+# 测试同卷分阶段提交、失败回滚和上次提交的恢复。
 #
 # 用法（WSL）: bash test_nxstore.sh [repo_root]
 set -u
@@ -28,6 +26,22 @@ trap cleanup EXIT
 SHIM=$T/busybox
 cat > "$SHIM" <<'EOF'
 #!/bin/sh
+case "$1" in
+    cp)
+        if [ "${FAULT:-}" = full ]; then
+            printf 'partial' > "$4"
+            exit 1
+        fi
+        ;;
+    mv)
+        if [ "${2#-}" = "$2" ]; then
+            [ ! -e "$3" ] || exit 2
+            case "$2:${FAULT:-}" in
+                *.nx-new:promote|*.nx-new:removed|*.nx-prev:removed) exit 1 ;;
+            esac
+        fi
+        ;;
+esac
 exec "$@"
 EOF
 chmod +x "$SHIM"
@@ -60,7 +74,7 @@ nx_put "$T/src1" "$T/dst/deep/1.bin"; rc=$?
 check "nx_put 正常返回 0" '[ "$rc" = 0 ]' "rc=$rc"
 check "nx_put 自动建父目录" '[ -f "$T/dst/deep/1.bin" ]'
 check "nx_put 内容一致" '[ "$(cat "$T/dst/deep/1.bin")" = AAAA ]'
-check "nx_put 不留 .tmp" '[ -z "$(find "$T/dst" -name "*.tmp")" ]'
+check "nx_put 成功后不留侧车" '[ -z "$(find "$T/dst" -name "*.nx-*")" ]'
 
 printf 'BBBB' > "$T/dst/deep/2.bin"
 nx_put "$T/nonexist" "$T/dst/deep/2.bin"; rc=$?
@@ -71,7 +85,7 @@ check "源不存在时不碰目标" '[ "$(cat "$T/dst/deep/2.bin")" = BBBB ]'
 nx_put "$T/empty" "$T/dst/deep/2.bin"; rc=$?
 check "拒绝写 0 字节（最关键的一条）" '[ "$rc" = 1 ]' "rc=$rc"
 check "0 字节源不破坏旧目标" '[ "$(cat "$T/dst/deep/2.bin")" = BBBB ]'
-check "0 字节源不留 .tmp" '[ ! -e "$T/dst/deep/2.bin.tmp" ]'
+check "0 字节源不留侧车" '[ ! -e "$T/dst/deep/2.bin.nx-new" ]'
 
 # 写失败（目标目录不可写）必须保留旧文件
 if [ "$(id -u)" != 0 ]; then
@@ -123,19 +137,26 @@ check "nx_st_set 空值" '[ "$(nx_st_get k X)" = "" ]'
 nx_st_set "" v >/dev/null 2>&1; rc=$?
 check "空 key 拒绝" '[ "$rc" = 1 ]'
 
-# ---- 9. 覆盖写的实现约束（exFAT 实测结论，见 nx_swap 注释）----
-# 这台相机的 exFAT 在 rename 到已存在名字时**不替换旧目录项**，每次写留一具尸体
-# （机上对照实验：mv -f 覆盖 10 次 → 11 个同名项）。WSL 的 ext4 复现不了这个，
-# 所以这里只锁实现形状：必须 rm 在前、mv 在后，且 nx_put 两个函数都走 nx_swap。
-check "nx_swap 已定义" 'command -v nx_swap >/dev/null 2>&1'
-sw=$(sed -n '/^nx_swap()/,/^}/p' "$LIB")
-check "nx_swap 先 rm 目标" 'echo "$sw" | grep -q "rm -f \"\$_nx_dst\""'
-r_lno=$(printf '%s\n' "$sw" | grep -n 'rm -f "\$_nx_dst"' | cut -d: -f1)
-m_lno=$(printf '%s\n' "$sw" | grep -n 'mv -f "\$_nx_src"' | cut -d: -f1)
-check "nx_swap 再 mv（rm 在 mv 之前）" \
-      '[ -n "$r_lno" ] && [ -n "$m_lno" ] && [ "$r_lno" -lt "$m_lno" ]' "rm=$r_lno mv=$m_lno"
-check "nx_put 走 nx_swap 而不是裸 mv" 'sed -n "/^nx_put()/,/^}/p" "$LIB" | grep -q "nx_swap"'
-check "nx_put_str 走 nx_swap" 'sed -n "/^nx_put_str()/,/^}/p" "$LIB" | grep -q "nx_swap"'
+# ---- 9. 注入写满、换名失败、卡不可用；shim 拒绝覆盖式 rename ----
+dst=$NX_SD/recover
+printf 'old\n' > "$dst"
+printf 'new\n' > "$T/candidate"
+FAULT=full nx_put "$T/candidate" "$dst"; rc=$?
+check "写满只丢弃未完成候选" '[ "$rc" = 1 ] && [ "$(cat "$dst")" = old ] && [ ! -e "$dst.nx-new" ]'
+FAULT=promote nx_put "$T/candidate" "$dst"; rc=$?
+check "换名失败还原上一版" '[ "$rc" = 1 ] && [ "$(cat "$dst")" = old ]'
+check "已验证的候选保留" '[ "$(cat "$dst.nx-new")" = new ]'
+FAULT=removed nx_put "$T/candidate" "$dst"; rc=$?
+check "回滚也失败时保留两份数据" \
+      '[ "$rc" = 1 ] && [ ! -e "$dst" ] && [ "$(cat "$dst.nx-prev")" = old ] && [ "$(cat "$dst.nx-new")" = new ]'
+check "下次读取恢复上一版" '[ "$(nx_get_str fallback "$dst")" = old ] && [ -s "$dst" ]'
+nx_swap "$T/candidate" "$dst"; rc=$?
+check "重试提交且只在成功后消费候选" \
+      '[ "$rc" = 0 ] && [ "$(cat "$dst")" = new ] && [ ! -e "$T/candidate" ] && [ ! -e "$dst.nx-prev" ]'
+mv "$dst" "$dst.nx-prev"
+printf 'pending\n' > "$dst.nx-new"
+nx_remove "$dst"; rc=$?
+check "删除不会让待恢复内容重新出现" '[ "$rc" = 0 ] && [ "$(nx_get_str none "$dst")" = none ] && [ ! -e "$dst.nx-new" ]'
 
 printf '\n%d PASS / %d FAIL\n' "$pass" "$fail"
 [ "$fail" = 0 ]

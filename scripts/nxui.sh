@@ -73,6 +73,11 @@ fi
 # the hash and the file read entirely.
 if [ "$MODE" != lut ]; then
     [ -d "$LAB" ] || mkdir -p "$LAB"
+    if [ -f "$LAB/recipes.json.nx-prev" ]; then
+        [ -r "$D/nxstore.sh" ] || exit 1
+        . "$D/nxstore.sh"
+        nx_recover "$LAB/recipes.json" || exit 1
+    fi
     SIG=$($BB cksum "$LAB/recipes.json") || exit 1
     OLD_SIG=
     [ ! -f /tmp/nxui-export.sig ] || read -r OLD_SIG < /tmp/nxui-export.sig

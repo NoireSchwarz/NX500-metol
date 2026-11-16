@@ -1,97 +1,42 @@
 #!/bin/sh
-# ============================================================
-# thumb-prewarm.sh - 后台预生成缩略图缓存
-#
-# 背景:
-#   打开相册时,相机端需要现场跑 ImageMagick convert 生成缩略图,
-#   单核 ARM 上约 0.5-2s/张。几百张照片时首屏要等几分钟,期间 CPU
-#   打满,80 端口 daemon 的心跳被饿死,前端还会误报"相机已断开"。
-#
-# 作用:
-#   在后台提前把缓存铺好(优先级最低,不影响拍摄与遥控),
-#   浏览时全部命中缓存 -> 秒开,CPU 也不再有尖峰。
-#
-# 用法(相机端):
-#   thumb-prewarm.sh start [宽] [质量] [最多张数] [大图宽] [大图质量] [大图张数]
-#   thumb-prewarm.sh stop
-#   thumb-prewarm.sh status            # 人类可读
-#   thumb-prewarm.sh json              # JSON(供 prewarm CGI / 前端进度条读取)
-#
-# 例:
-#   thumb-prewarm.sh start 320 75 300 1024 85 60
-#     -> 最新 300 张生成 320px/q75(网格),其中最新 60 张再生成 1024px/q85(灯箱)
-#   thumb-prewarm.sh start             # 默认 320 75 200 1024 85 40
-#
-# 接线(nx-rc.sh 中,web 遥控开启时自动拉起):
-#   [ -x "$APP_PATH/thumb/thumb-prewarm.sh" ] && "$APP_PATH/thumb/thumb-prewarm.sh" start >/dev/null 2>&1 &
-#
-# 进度: /tmp/thumb_prewarm.progress (JSON),前端经 8080 cgi-bin/prewarm 读取
-# ============================================================
+# Prewarm the newest grid entries and a smaller set of lightbox previews.
+SELF=${0%/*}
+[ "$SELF" != "$0" ] || SELF=.
+SELF=$(cd "$SELF" && pwd) || exit 1
+[ -r "$SELF/thumb-cache.sh" ] || exit 1
+. "$SELF/thumb-cache.sh"
 
-# 注意:相机端实际布局是 /opt/usr/nx-ks/nx-rc/tools (install.sh 是
-# cp -ar scripts/* -> /opt/usr/nx-ks/,脚本内引用必须带 nx-rc 层)。
-TOOLS=/opt/usr/nx-ks/nx-rc/tools
-CONVERT=$TOOLS/usr/bin/convert
-LD_LIBRARY_PATH=$TOOLS/usr/lib
-export LD_LIBRARY_PATH
+PIDFILE=$THUMB_STATE/prewarm.pid
+PROGRESS=$THUMB_STATE/prewarm.json
+LOGFILE=$THUMB_STATE/prewarm.log
 
-PIDFILE=/tmp/thumb_prewarm.pid
-LOGFILE=/tmp/thumb_prewarm.log
-PROGRESS=/tmp/thumb_prewarm.progress
-
-# ---- 定位 SD 卡 ----
-# web 遥控刚开启时 nx-rc.sh 会立刻拉起本脚本,而 SD 卡挂载可能还没完成,
-# 此时 [ -d "$SD/DCIM" ] 会失败导致预热静默退出(进度文件都不会生成)。
-# 这里最多等 SD_WAIT 秒,等 DCIM 出现再继续。
-SD_WAIT=${SD_WAIT:-30}
-sd_ready() {
-    for cand in /mnt/mmc /tmp/mmc /mnt/sd /tmp/sd; do
-        if [ -d "$cand/DCIM" ]; then
-            SD=$cand
-            return 0
-        fi
-    done
+worker_pid() {
+    [ -r "$PIDFILE" ] && read -r worker < "$PIDFILE" || return 1
+    case "$worker" in ''|*[!0-9]*|0|1) return 1 ;; esac
+    kill -0 "$worker" 2>/dev/null || return 1
+    # The process can exit between the liveness test and this read. Redirect
+    # both the command and the fd-open so a lost pidfile race stays silent.
+    cmd=$( { tr '\000' ' ' < "/proc/$worker/cmdline"; } 2>/dev/null ) || return 1
+    case "$cmd" in
+        *"$SELF/thumb-prewarm.sh worker "*) return 0 ;;
+    esac
     return 1
 }
 
-SD=""
-i=0
-while [ "$i" -lt "$SD_WAIT" ]; do
-    if sd_ready; then
-        break
-    fi
-    i=$((i + 1))
-    sleep 1
-done
-
-log() {
-    echo "$(date '+%H:%M:%S') $1" >> "$LOGFILE"
-}
-
-# 写进度 JSON: $1=状态 $2=已生成 $3=已跳过 $4=总数
 write_progress() {
-    printf '{"running":%s,"w":%s,"q":%s,"fw":%s,"fq":%s,"done":%s,"skipped":%s,"total":%s,"ts":%s}\n' \
-        "$1" "$W" "$Q" "$FW" "$FQ" "$2" "$3" "$4" "$(date +%s)" \
-        > "$PROGRESS.tmp" 2>/dev/null
-    mv -f "$PROGRESS.tmp" "$PROGRESS" 2>/dev/null
+    printf '{"running":%s,"w":%s,"q":%s,"fw":%s,"fq":%s,"done":%s,"skipped":%s,"failed":%s,"total":%s,"ts":%s}\n' \
+        "$1" "$W" "$Q" "$FW" "$FQ" "$done_count" "$skipped" "$failed" "$total" "$(date +%s)" \
+        > "$PROGRESS.tmp" && mv -f "$PROGRESS.tmp" "$PROGRESS"
 }
 
-case "$1" in
+case "${1:-}" in
     stop)
-        if [ -f "$PIDFILE" ]; then
-            kill "$(cat "$PIDFILE")" 2>/dev/null
-            rm -f "$PIDFILE"
-            log "stopped by user"
-        fi
+        worker_pid && kill "$worker" 2>/dev/null
         echo "thumb-prewarm stopped"
         exit 0
         ;;
     status)
-        if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
-            echo "running (pid $(cat "$PIDFILE"))"
-        else
-            echo "not running"
-        fi
+        if worker_pid; then echo "running (pid $worker)"; else echo "not running"; fi
         echo "--- progress ---"
         cat "$PROGRESS" 2>/dev/null
         echo "--- last log ---"
@@ -99,126 +44,88 @@ case "$1" in
         exit 0
         ;;
     json)
-        # 供 CGI 读取:进程不在时把 running 置 0
-        if [ -f "$PROGRESS" ]; then
-            if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
-                cat "$PROGRESS"
-            else
-                sed 's/"running":1/"running":0/' "$PROGRESS"
-            fi
-        else
+        if [ ! -s "$PROGRESS" ]; then
             echo '{"running":0,"done":0,"skipped":0,"total":0}'
+        elif worker_pid; then
+            cat "$PROGRESS"
+        else
+            sed 's/"running":1/"running":0/' "$PROGRESS"
         fi
         exit 0
         ;;
+    start)
+        mkdir -p "$THUMB_STATE" || exit 1
+        shift
+        sh "$SELF/thumb-prewarm.sh" worker "$@" </dev/null >/dev/null 2>&1 &
+        echo "thumb-prewarm requested"
+        exit 0
+        ;;
+    worker) ;;
+    *) echo "usage: thumb-prewarm.sh start [width quality count full_width full_quality full_count]|stop|status|json"; exit 1 ;;
 esac
 
-# ---- start ----
-W=${2:-320}
-Q=${3:-75}
-LIMIT=${4:-200}
-FW=${5:-1024}
-FQ=${6:-85}
-FLIMIT=${7:-40}
+# The worker owns its own PID and kernel lock, so concurrent starts and stale
+# pidfiles do not spawn another scan.
+exec 8>"$THUMB_STATE/prewarm.lock" || exit 1
+"$THUMB_BB" flock -n 8 || exit 0
+printf '%s\n' "$$" > "$PIDFILE" || exit 1
+list="$THUMB_STATE/files.$$"
+trap 'rm -f "$PIDFILE" "$list" "$PROGRESS.tmp"' EXIT
+trap 'exit 1' HUP INT TERM
 
-[ -d "$SD/DCIM" ] || { echo "SD card / DCIM not found"; exit 1; }
-[ -x "$CONVERT" ] || { echo "convert not found: $CONVERT"; exit 1; }
+thumb_dimensions "${5:-1024}" "${6:-85}"
+FW=$W FQ=$Q
+thumb_dimensions "${2:-320}" "${3:-75}"
+limit=${4:-200}
+full_limit=${7:-40}
+case "$limit" in *[!0-9]*) limit=200 ;; esac
+case "$full_limit" in *[!0-9]*) full_limit=40 ;; esac
 
-if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
-    echo "already running (pid $(cat "$PIDFILE"))"
-    exit 0
-fi
-
-: > "$LOGFILE"
-log "start: w=$W q=$Q limit=$LIMIT  full: w=$FW q=$FQ limit=$FLIMIT"
-
-# 统计图片总数(轻量 ls,只读目录项),供前端算进度百分比
-TOTAL=0
-for d in $(ls -1 "$SD/DCIM" 2>/dev/null); do
-    DD="$SD/DCIM/$d"
-    [ -d "$DD" ] || continue
-    for f in $(ls -1 "$DD" 2>/dev/null); do
-        case "$f" in
-            *.JPG|*.jpg|*.JPEG|*.jpeg|*.PNG|*.png) TOTAL=$((TOTAL + 1)) ;;
-        esac
-    done
+done_count=0 skipped=0 failed=0 total=0 sliced=0
+write_progress 1
+waited=0
+until thumb_find_sd; do
+    [ "$waited" -lt "${SD_WAIT:-30}" ] || { write_progress 0; exit 1; }
+    waited=$((waited + 1))
+    sleep 1
 done
-write_progress 1 0 0 "$TOTAL"
 
-# 后台执行
-(
-    echo $$ > "$PIDFILE"
-    CACHE_ROOT="$SD/.thumbcache/${W}x${Q}"
-    FULL_ROOT="$SD/.thumbcache/${FW}x${FQ}"
-    DONE=0
-    SKIP=0
+# Bound the work to the newest requested entries, even when most are cached.
+find "$SD/DCIM" -mindepth 2 -maxdepth 2 -type f \
+    \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' \) 2>/dev/null |
+    LC_ALL=C sort -r | head -n "$limit" > "$list"
+total=$(wc -l < "$list")
+write_progress 1
 
-    # 生成一张: $1=源 $2=缓存根 $3=宽 $4=质量 $5=相对路径(无扩展名)
-    gen_one() {
-        src=$1; root=$2; w=$3; q=$4; rel=$5
-        cache="$root/$rel.jpg"
-        if [ -f "$cache" ] && [ ! "$src" -nt "$cache" ]; then
-            return 1
-        fi
-        mkdir -p "$(dirname "$cache")" 2>/dev/null
-        tmp="$cache.tmp.$$"
-        rm -f "$tmp"
-        # nice -n 19:让位给拍摄/遥控,避免抢占 CPU
-        if command -v nice >/dev/null 2>&1; then
-            nice -n 19 "$CONVERT" -define "jpeg:size=${w}x${w}" \
-                -auto-orient -thumbnail "${w}x${w}" -quality "$q" \
-                "$src" "$tmp" 2>/dev/null
+seen=0
+while IFS= read -r file; do
+    relative=${file#"$SD/DCIM/"}
+    seen=$((seen + 1))
+    thumb_paths "$relative" "$W" "$Q"
+    if thumb_sliceable "$W"; then
+        # The camera already stored a 320px preview, so the CGI answers from the
+        # original file and there is nothing to cache. Counting these apart from
+        # "skipped" keeps the log honest about what actually ran.
+        sliced=$((sliced + 1))
+    elif thumb_ready; then
+        skipped=$((skipped + 1))
+    elif thumb_generate "$W" "$Q"; then
+        done_count=$((done_count + 1))
+    else
+        failed=$((failed + 1))
+    fi
+
+    if [ "$seen" -le "$full_limit" ]; then
+        thumb_paths "$relative" "$FW" "$FQ"
+        if thumb_mpf_enabled && thumb_sliceable "$FW"; then
+            : # lightbox is served from the original, nothing to cache
         else
-            "$CONVERT" -define "jpeg:size=${w}x${w}" \
-                -auto-orient -thumbnail "${w}x${w}" -quality "$q" \
-                "$src" "$tmp" 2>/dev/null
+            thumb_generate "$FW" "$FQ" || :
         fi
-        if [ -s "$tmp" ]; then
-            mv -f "$tmp" "$cache" 2>/dev/null || rm -f "$tmp"
-            return 0
-        fi
-        rm -f "$tmp"
-        return 2
-    }
+    fi
+    [ $((seen % 5)) -ne 0 ] || write_progress 1
+done < "$list"
 
-    # 目录倒序 + 目录内文件名倒序 = 最新照片优先预热
-    for d in $(ls -1r "$SD/DCIM" 2>/dev/null); do
-        [ "$DONE" -ge "$LIMIT" ] && break
-        DD="$SD/DCIM/$d"
-        [ -d "$DD" ] || continue
-        for f in $(ls -1r "$DD" 2>/dev/null); do
-            [ "$DONE" -ge "$LIMIT" ] && break
-            case "$f" in
-                *.JPG|*.jpg|*.JPEG|*.jpeg|*.PNG|*.png) ;;
-                *) continue ;;
-            esac
-            SRC="$DD/$f"
-            [ -f "$SRC" ] || continue
-            REL="$d/${f%.*}"
-
-            gen_one "$SRC" "$CACHE_ROOT" "$W" "$Q" "$REL"
-            rc=$?
-            if [ "$rc" -eq 1 ]; then
-                SKIP=$((SKIP + 1))
-            else
-                DONE=$((DONE + 1))
-                # 最新若干张额外预热灯箱大图(全屏查看才需要)
-                if [ "$DONE" -le "$FLIMIT" ]; then
-                    gen_one "$SRC" "$FULL_ROOT" "$FW" "$FQ" "$REL"
-                fi
-            fi
-            # 每 5 张更新一次进度文件(写 /tmp 很便宜,前端看着平滑)
-            [ $((DONE % 5)) -eq 0 ] && write_progress 1 "$DONE" "$SKIP" "$TOTAL"
-            [ $((DONE % 20)) -eq 0 ] && log "generated $DONE (skipped $SKIP)"
-        done
-    done
-
-    write_progress 0 "$DONE" "$SKIP" "$TOTAL"
-    log "finished: generated=$DONE skipped=$SKIP total=$TOTAL"
-    rm -f "$PIDFILE"
-) >> "$LOGFILE" 2>&1 &
-
-sleep 1
-echo "thumb-prewarm started (pid $(cat "$PIDFILE" 2>/dev/null))"
-echo "progress: thumb-prewarm.sh status   log: $LOGFILE"
-exit 0
+write_progress 0
+printf 'generated=%s sliced=%s skipped=%s failed=%s total=%s\n' \
+    "$done_count" "$sliced" "$skipped" "$failed" "$total" > "$LOGFILE"
