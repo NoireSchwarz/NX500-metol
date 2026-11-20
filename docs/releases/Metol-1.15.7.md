@@ -15,6 +15,10 @@ A18 槽，只是「按哪种输入域做的」不同。
 
 标准表在 `looks/`，V-Log 表在 `looks/_vlog/`。
 
+顺带：**`EV + AEL` 这版起是 V-Log 曲线入口**。V-Log 在菜单里埋得深（双击 EV → 实用功能 →
+V-Log 曲线），而它是拍视频时最常切的开关之一；这个槽位自从 FilmLab 并进面板后就空着，正好给它。
+语义与 EV+WiFi 一致：面板没开就开，已在跑就关。
+
 ## 2. Lumix V-Log 库
 
 从 [`changyun233/Lumix-V-log-LUTs`](https://github.com/changyun233/Lumix-V-log-LUTs)

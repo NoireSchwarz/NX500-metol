@@ -23,11 +23,14 @@ Release 说明中英并列。
 
 | 按键 | 打开 | 备注 |
 |---|---|---|
-| **EV + AEL** | FilmLab 滤镜条（79 条配方） | 点选即时预览，`保存并关闭` 落盘 |
-| **EV + WiFi** | 3D LUT 面板（标准域 / V-Log 域） | 点选即换表，**不用半按**；已在 LUT 层时再点一次页签换域 |
-| **双击 EV** | 主菜单（NXUI 分页界面） | 菜单内容见「[相机菜单一览](#相机菜单一览)」 |
-| **半按快门** | 关闭当前面板 | LUT/FilmLab 面板关闭后**保留当前效果** |
+| **EV + WiFi** | **LUT 面板**（LUT / FILMLAB 两个页签） | 点选即换表，**不用半按**；已在 LUT 层时**再点一次 LUT 页签换域**（标准 ⇄ V-Log） |
+| **EV + AEL** | **V-Log 曲线页** | 相机级 gamma 开关。菜单里也能进（双击 EV → 实用功能 → V-Log 曲线），这个键是给常用的那条路 |
+| **双击 EV** | 主菜单 | 菜单内容见「[相机菜单一览](#相机菜单一览)」 |
+| **半按快门** | 关闭当前面板 | 关闭后**保留当前效果** |
 
+> **FilmLab 已并入 LUT 面板**（1.15.7 起）：不再有独立的滤镜条入口，79 条配方就在面板的
+> FILMLAB 页签里。
+> 面板**打开时**单按 WiFi / AEL 是「换页签」（LUT ⇄ FILMLAB），要按住 EV 才是组合键。
 > 组合键都是「按住 EV 不放，再按另一个键」；单击 WiFi 仍是相机原生的开/关 WiFi。
 
 装完想看菜单里每一项干什么、出问题该看哪个日志，直接跳
@@ -35,12 +38,12 @@ Release 说明中英并列。
 
 ## 排障：先看日志，再动手
 
-### 三条恢复命令（先保命）
+### 四条恢复命令（先保命）
 
 ```sh
 sh /opt/usr/nx-ks/nxui.sh disable    # UI 出问题 → 回老的 mod_gui 菜单
 sh /opt/usr/nx-ks/lut.sh off         # 颜色不对 → 回原厂 LUT
-sh /opt/usr/nx-ks/tc.sh off          # 录像曲线 → 回原厂
+sh /opt/usr/nx-ks/vlog.sh off        # V-Log 曲线 → 回原厂 gamma
 sh /opt/usr/nx-ks/nxui.sh diag       # 面板能不能用，一次看全
 ```
 
@@ -138,7 +141,7 @@ sh /opt/usr/nx-ks/nxui.sh diag       # 面板能不能用，一次看全
 | 批量录制 | 按分钟分批连续录像，可选隐藏录制界面（`brec.sh`，上游） |
 | HDR | M 档五档快门（65 / 92 / 119 / 146 / 200）连拍 5 张，**机身不合成**，后期自己叠（`1HDR.sh`，上游） |
 | LUT 滤镜 | ★ 直接进 NXUI 的 LUT 面板（等同 EV+WiFi） |
-| TC 曲线 → | ★ 录像曲线：原厂 / Log / Flat / 高对比 |
+| V-Log 曲线 → | ★ 相机级 gamma：V-Log 开关 / 回原厂 / 曲线状态 / 放行检查（平时用 **EV + AEL** 直接进） |
 | `Metol 版本` | 版本弹窗（`ver.sh`） |
 | 摄像模式 ☑ | 快门键变录像键（`camcorder_mode.sh` → `shutter_to_rec`，上游） |
 
@@ -179,7 +182,10 @@ sh /opt/usr/nx-ks/nxui.sh diag       # 面板能不能用，一次看全
 
 ---
 
-## FilmLab 胶片配方
+## FilmLab 配方（LUT 面板的第二页签）
+
+FilmLab **没有独立入口**：`EV + WiFi` 进面板，点 `FILMLAB` 页签（或按面板上的 WiFi / AEL 键
+换层）。它和 LUT 是两个页签、两套状态 —— 换层不碰对方的相机状态。
 
 | 族 | 例子（共 79 条：彩色 71 + 黑白 8） |
 | --- | --- |
@@ -297,35 +303,49 @@ sh /opt/usr/nx-ks/lut.sh video on|off|status                       # 录像监�
 
 细节：[`docs/current/LUT_RETARGET_LIVE_2026-10-18.md`](docs/current/LUT_RETARGET_LIVE_2026-10-18.md)　面板设计：[`docs/current/LUT_UI_2026-10-18.md`](docs/current/LUT_UI_2026-10-18.md)
 
-## TC 曲线（录像 tone 曲线）
+## V-Log 曲线
 
-p7 录像链路里有一张 **19 节点 tone 曲线表**，作用在 3DLUT 之前。它不是 `MOVIE_GAMMA_CONTROL`
-（那个接口在 NX500 1.12 上没有消费者），是数据表本身：写 19 个 Y → 置 dirty → ISP **<50 ms 内自行消费**，
-不需要按键。
+V-Log 是**相机级 gamma**，不是滤镜：开了之后取景和成片一起变成低对比的对数外观，给后期留空间。
+按 **EV + AEL** 直接进；菜单里也留着入口（双击 EV → 主菜单 → 实用功能 → V-Log 曲线）。
 
 | 项 | 现状 |
 | --- | --- |
-| 表 | 19 节点，X 固定 `0–16383`，Y `0–1023`，首 0 尾 1023、严格递增 |
-| 地址链 | `Param0 = read32(0x817dccbc)` → `Gamma = read32(Param0+0x170)` → `Y[i] = Gamma+0xe8c+4i`；**每次重新解析 + 签名校验**，堆地址随 boot 变，不能硬编码 |
-| 入口 | 菜单 `实用功能 → TC 曲线`（原厂 / Log / Flat / 高对比），或 `tc.sh set log\|flat\|hc` |
-| 生效 | 进入 HEVC 码流：同段 A/B 录像全画面 Y mean **63.26 → 98.83**，像素映射 4→17 / 52→102 / 180→186 |
-| 回退 | `tc.sh off` 回原厂；重启也自动回原厂（改的是运行态内存，不写固件） |
+| 位置 | **EV + AEL**（按住 EV 再按 AEL）；菜单 `主菜单 → 实用功能 → V-Log 曲线`（`gui_vlog.NX500`：V-Log 开关 / 回原厂 / 曲线状态 / 放行检查） |
+| 作用 | 改 gamma 侧曲线，取景与成片同时变；**不动 3D LUT** |
+| 放行检查 | 要求 A18 回原厂（`lut.sh off`）、PW 中性、未插 USB —— 三条不满足直接拒绝，明细落 `/tmp/nx-p0/vlog-gate.log` |
+| 与 LUT 的关系 | **V-Log 是地基**：开了 log，LUT 与 FilmLab 的判断基准全变。两者互斥 —— 先 `lut.sh off` 再开 V-Log |
+| 引擎 | 曲线引擎（RC5 `gamma-reload.sh`）放在机身 `$D/gamma/`，**默认不随包安装**；没有引擎时菜单项会报缺失 |
+| 回退 | `vlog.sh off` 回原厂 gamma；重启也回原厂（改的是运行态） |
 
 ```sh
-sh /opt/usr/nx-ks/tc.sh status             # 是否原厂、Y[9]、描述符
-sh /opt/usr/nx-ks/tc.sh list               # /mnt/mmc/tc/*.tcy
-sh /opt/usr/nx-ks/tc.sh set log|flat|hc    # 或指向任意 .tcy
-sh /opt/usr/nx-ks/tc.sh off
+sh /opt/usr/nx-ks/vlog.sh status    # 当前曲线状态（NXL_GAMMA_RELOAD1 块）
+sh /opt/usr/nx-ks/vlog.sh on|off|toggle
+sh /opt/usr/nx-ks/vlog.sh gate      # 放行检查，明细在 /tmp/nx-p0/vlog-gate.log
 ```
 
-诚实边界：
+### 开了 V-Log 之后：V-Log LUT 怎么开
 
-- **曲线可编程 ≠ 动态范围增加**。容器仍是 8bit 4:2:0，没有 10bit 地基；Y mean 抬升是曲线形状，不是曝光漂移，也不是 DR 净增益（严格门槛后区间含零）。
-- 锚点是「中灰锚定」（相机 128 ↔ sRGB 128）；换白点锚定整体差约 35 码，要 18% 灰卡才能定。
-- **TC 会移动 3DLUT 的输入域**，两者同时改需重新标定。
-- 只在空闲预览模式下写入（目录锁 + 录像检测 + 逐项回读，失败自动写回原厂）；**录像中切换的稳定性、照片路径是否受影响，都未验证**。
+面板里的 LUT 有**两个输入域**，各是一本目录：
 
-细节：[`docs/current/TC_CURVE_ONDEVICE_2026-11-08.md`](docs/current/TC_CURVE_ONDEVICE_2026-11-08.md)　还原工作流：[`docs/current/TC_RESTORATION_WORKFLOW_2026-11-08.md`](docs/current/TC_RESTORATION_WORKFLOW_2026-11-08.md)
+| 域 | 目录 | 表是给谁做的 |
+| --- | --- | --- |
+| 标准 | `looks/` | 相机正常 JPEG —— 随时可用 |
+| V-Log | `looks/_vlog/` | V-Log 素材（对数域输入） |
+
+**开启方式**：`EV + WiFi` 进面板 → 已经在 LUT 层时**再点一次 LUT 页签**，页签从 `● LUT`
+变成 `● LUT·VLOG`，列表换成 `_vlog/` 那本；再点一次切回来。换域只重读清单，不写 A18、
+不触发 DMA。
+
+> ★ **V-Log 域的表只在 V-Log gamma 生效时才是对的**。没开 log 就选它 = 拿对数域的表套
+> 正常画面，欠曝发灰，看着像"表本身坏了"。
+>
+> 引擎没装、又想要 log 的平缓观感：用 `tools/lutgen/bake_log.py` 把 log 曲线**烘进 3D LUT
+> 的输出**，标准域的表也能出低对比效果。第三方 V-Log 创意表（Lumix 等）怎么烘成标准域
+> 能用的表，见 [`docs/current/LUMIX_VLOG_IMPORT_2026-11-20.md`](docs/current/LUMIX_VLOG_IMPORT_2026-11-20.md)。
+
+> 历史：原先 p7 那条 19 节点 TC 曲线（原厂 / Log / Flat / 高对比）已于 2026-11-20 从菜单
+> 移除，`tc.sh` 与 `gui_tc.NX500` 仍留在机上作备份。移除原因：它与 V-Log / 3DLUT 叠加时
+> 无法归因，而且只重分配 256 级码值、不产生动态范围。
 
 ## A2 p7 补丁（可选）
 
@@ -351,11 +371,12 @@ sh /opt/usr/nx-ks/tc.sh off
 | `install.sh` `info.tg` `nx_cs.adj` | SD 卡根触发三件套（装机 / 增量同步） |
 | `scripts/` | 全部模块母本 → 同步到相机 `/opt/usr/nx-ks/` |
 | `scripts/filmlab.sh` · `scripts/filmlab/recipes.json` | FilmLab 引擎 / 权威配方库（79 条） |
-| `scripts/EV_AEL.sh` · `scripts/EV_MOBILE.sh` · `scripts/EV_EV.sh` | 三个组合键入口（滤镜条 / LUT 面板 / 主菜单） |
+| `scripts/EV_AEL.sh` · `scripts/EV_MOBILE.sh` · `scripts/EV_EV.sh` | 三个组合键入口（V-Log 曲线 / LUT 面板 / 主菜单） |
 | `scripts/nxui.sh` · `scripts/nxui/` | NXUI 启动器 + 面板二进制（`nxui.arm` 中文 / `nxui_en.arm` 英文）+ 字体 + `lang` |
 | `scripts/lut.sh` · `scripts/lut/` | 3D LUT 入口 + 工具集（`cube2lut` / `nx_slotwrite` / `nx_regtabwrite` / `nx_regtabdump` / `nx_lutload` / `nx_lutptr` / `lutmix`） |
 | `scripts/lut_video.sh` | 录像 LUT 监视器（随 `apply`/`off` 联动，锁与状态都在 `/tmp`） |
-| `scripts/tc.sh` · `scripts/tc/*.tcy` | TC 曲线写入与曲线库（原厂 / Log / Flat / 高对比） |
+| `scripts/vlog.sh` · `scripts/gui_vlog.NX500` | V-Log 曲线开关与放行检查（引擎需另装到 `$D/gamma/`） |
+| `scripts/tc.sh` · `scripts/tc/*.tcy` | TC 曲线写入与曲线库 —— **已退役**，菜单入口已移除，仅作备份保留 |
 | `scripts/ssh_hint.sh` · `scripts/dropbear/` | SSH 状态提示与 dropbear 本体 |
 | `scripts/pwrlog.sh` | 关机取证采样（30 s 一条到 SD） |
 | `scripts/gui_*.NX500` | 原生菜单页（`i18n/en/scripts/` 是英文覆盖层） |
@@ -368,7 +389,8 @@ sh /opt/usr/nx-ks/tc.sh off
 - [`docs/README.md`](docs/README.md) — **文档总索引**（`current` 现行 / `archive` 历史 / `evidence` 证据）
 - [`docs/current/HANDOVER_2026-10-16.md`](docs/current/HANDOVER_2026-10-16.md) — 总入口：约定、死路、门控、执行序
 - [`docs/current/NXUI_ENABLE_GATE_2026-11-10.md`](docs/current/NXUI_ENABLE_GATE_2026-11-10.md) — 「UI 出不来」的门禁根因与 diag
-- [`docs/current/TC_CURVE_ONDEVICE_2026-11-08.md`](docs/current/TC_CURVE_ONDEVICE_2026-11-08.md) — TC 曲线：地址链、写入协议、实机 A/B
+- [`docs/current/UI_LUT_SCOPE_2026-11-20.md`](docs/current/UI_LUT_SCOPE_2026-11-20.md) — LUT 两个输入域：页签二次点击换域、队列序号作废、编辑态边界
+- [`docs/current/LUMIX_VLOG_IMPORT_2026-11-20.md`](docs/current/LUMIX_VLOG_IMPORT_2026-11-20.md) — 第三方 V-Log 表怎么烘成标准域可用的表（S2V 复合、去重、命名上限）
 - [`docs/current/VIDEO_LUT_FIRSTFRAME_2026-11-07.md`](docs/current/VIDEO_LUT_FIRSTFRAME_2026-11-07.md) — 录像首帧带表：p7 档位指针表
 - [`fw/v1.12/a2/README-A2.md`](fw/v1.12/a2/README-A2.md) — A2 p7 补丁刷入教程
 - [`docs/current/RE_PROGRESS_2026-10-08.md`](docs/current/RE_PROGRESS_2026-10-08.md) — 逆向进度总览（含死路清单）
@@ -385,20 +407,20 @@ sh /opt/usr/nx-ks/tc.sh off
 | 平台 | NX500 固件 **1.12**（全部功能实机验证） | NX1 1.41 可装，但 LUT / FilmLab / NXUI 未在 NX1 上启用；其它固件版本拒绝安装 |
 | 色彩 | **sRGB** 输出下取景与 JPEG 成片颜色可信（86 张随包表的基准，其中 34 张按实测输入域生成） | **AdobeRGB 会生效但颜色未标定**；相机智能滤镜（枚举 14–18）走另一条动态 24 档路径，不覆盖 |
 | 载体 | **JPEG 成片 + 取景器 + 录像（首帧即带表）** | **RAW（`.SRW`）不承诺被 LUT 烘焙**；地基只有 8bit 4:2:0（10bit 不可达，内置 gamma 接口无消费者）；录像已实测 4 分钟长录，多帧率组合未覆盖 |
-| 录像曲线 | **TC 曲线四条预设，写表后 <50 ms 生效并进入 HEVC** | 只重分配 256 级码值，不产生动态范围；绝对锚点待灰卡定；录像中切换、与 3DLUT 叠加、照片路径影响均未验证 |
-| 生效 | LUT 写内存后**自动装载**（等取景帧结束，无需按键）；TC 曲线写表后 **<50 ms 自行生效** | **开机即生效做不到** —— 断电/重启回原厂，要持久化得改固件镜像 |
+| V-Log | **相机级 gamma 开关**，取景与成片同时变；要求 A18 回原厂 + PW 中性 + 未插 USB 才放行 | 曲线引擎（RC5 `gamma-reload.sh`）**默认不随包安装**，要手动放进 `$D/gamma/`；开了 log 之后 LUT / FilmLab 的判断基准全变，需重新选表 |
+| 生效 | LUT 写内存后**自动装载**（等取景帧结束，无需按键） | **开机即生效做不到** —— 断电/重启回原厂，要持久化得改固件镜像 |
 | 触发 | `nx_lutload.arm once` 复刻 p7 的 Load 写序，用 `CORE RSZ_OUT1_EOF` 帧事件对齐 | 息屏或 `di-camera-app` 不在时 ISP 不取景，DMA 完成中断不会来 —— 此时退回「半按一次」 |
 | 形态 | 不刷机、不改分区，可双向回滚（A2 是唯一可选的 p7 写入） | 不改固件分区 ⇒ 重启即回原厂（LUT 写入是内存操作） |
 
 > 它**不是**完整色彩管理（不做输入/输出 profile 转换），**不是**所见即所得承诺（取景与成片处理链不同），
-> **不是**破解（不解除区域锁、不改录制时限）。改的只是 ISP 里的两张表：末端 3D 查找表 + 录像 tone 曲线。
+> **不是**破解（不解除区域锁、不改录制时限）。改的只是 ISP 里的两张表：末端 3D 查找表 + gamma 曲线。
 
 ## 硬限制（p7 / 固件层面，不是脚本 bug）
 
 - **全七维 PW 一键需 A2 固件**；官方固件下归一化器域外的值会被拒收。
 - **p7 无 UI**（Font/DrawText/Dialog/Widget 全 0 命中）⇒ 界面只能在 Linux 侧改。
 - **三键以上组合不可得**（内核先消费按键）⇒ 能用的只有「按住 EV + 单键」这一类两键组合；长按由 NXUI 按 press/release 时长自己判定，不是硬件事件。
-- **TC 曲线只改形状，不改位深**：8bit 4:2:0 里重映射 256 级码值不产生新的动态范围；`MOVIE_GAMMA_CONTROL` / `IQ[180]` 那条接口没有消费者，10bit 编码在固件里不存在。
+- **V-Log 只改 gamma 形状，不改位深**：8bit 4:2:0 里没有 10bit 地基；`MOVIE_GAMMA_CONTROL` / `IQ[180]` 那条接口没有消费者，10bit 编码在固件里不存在。
 - 出厂 LUT 表**全是风格表**，不能拿"写 identity 得中性"当判据。
 
 > 胶片仿真引擎与 `.cube` 素材另见 [nx500-filmsim](https://github.com/WApaperplane/nx500-filmsim)（public）。

@@ -23,21 +23,25 @@ README), with release notes in both languages.
 
 | Key | Opens | Note |
 |---|---|---|
-| **EV + AEL** | FilmLab strip (79 recipes) | tap to preview, `Save & close` persists |
-| **EV + WiFi** | 3D LUT panel (standard / V-Log domain) | tap to switch, **no half-press needed**; tap the tab again while already on LUT to flip domain |
+| **EV + WiFi** | **LUT panel** (LUT / FILMLAB tabs) | tap to switch, **no half-press needed**; tap the LUT tab again while already on LUT to flip domain (standard ⇄ V-Log) |
+| **EV + AEL** | **V-Log curve page** | camera-level gamma switch. Also reachable via the menu (double-tap EV → Custom Func. → V-Log Curve); this key is the shortcut |
 | **Double-tap EV** | Main menu (NXUI paged UI) | items are listed in [Camera menu](#camera-menu) |
 | **Half-press** | Closes the current panel | the applied look **stays** after closing |
 
+> **FilmLab is now part of the LUT panel** (since 1.15.7): there is no separate strip entry any
+> more — the 79 recipes live in the FILMLAB tab.
+> **Inside an open panel**, a plain WiFi / AEL press switches tabs (LUT ⇄ FILMLAB); hold EV for
+> the combos.
 > All combos are "hold EV, then press the other key". A plain WiFi press is still the camera's own WiFi toggle.
 
 ## Troubleshooting: read the log before touching anything
 
-### Three recovery commands
+### Four recovery commands
 
 ```sh
 sh /opt/usr/nx-ks/nxui.sh disable    # UI misbehaving -> back to the legacy mod_gui menu
 sh /opt/usr/nx-ks/lut.sh off         # wrong colours -> back to the stock LUT
-sh /opt/usr/nx-ks/tc.sh off          # video curve -> back to stock
+sh /opt/usr/nx-ks/vlog.sh off        # V-Log curve -> back to stock gamma
 sh /opt/usr/nx-ks/nxui.sh diag       # is the panel usable? all five checks at once
 ```
 
@@ -136,7 +140,7 @@ Six entries on the main page plus one status row. ★ = added by this project,
 | Batch Rec | continuous recording in minute-sized batches, optionally with a hidden UI (`brec.sh`, upstream) |
 | HDR | five shutter steps (65 / 92 / 119 / 146 / 200) in M mode, five frames, **no in-camera merge** (`1HDR.sh`, upstream) |
 | LUT Filter | ★ opens the NXUI LUT panel (same as EV+WiFi) |
-| TC Curve → | ★ video tone curve: Stock / Log / Flat / High Contrast |
+| V-Log Curve → | ★ camera-level gamma: V-Log toggle / restore stock / curve status / gate check (usually via **EV + AEL**) |
 | `Metol 版本` | version popup (`ver.sh`) |
 | Camcorder ☑ | shutter button becomes a record button (`camcorder_mode.sh` → `shutter_to_rec`, upstream) |
 
@@ -179,7 +183,11 @@ Upstream NX-KS capability.
 
 ---
 
-## FilmLab recipes
+## FilmLab recipes (the LUT panel's second tab)
+
+FilmLab has **no separate entry**: open the panel with `EV + WiFi` and tap the `FILMLAB` tab (or
+press WiFi / AEL inside the panel to switch layers). It is two tabs and two independent states —
+switching layers never touches the other layer's camera state.
 
 | Family | Examples (79 total: 71 colour + 8 B&W) |
 | --- | --- |
@@ -300,35 +308,52 @@ sh /opt/usr/nx-ks/lut.sh video on|off|status                          # recordin
 
 Details: [`docs/current/LUT_RETARGET_LIVE_2026-10-18.md`](docs/current/LUT_RETARGET_LIVE_2026-10-18.md) · panel design: [`docs/current/LUT_UI_2026-10-18.md`](docs/current/LUT_UI_2026-10-18.md)
 
-## TC curve (video tone curve)
+## V-Log curve
 
-p7's video chain carries a **19-node tone-curve table** ahead of the 3D LUT. It is not
-`MOVIE_GAMMA_CONTROL` (that interface has no consumer on NX500 1.12) — it is the data table itself:
-write 19 Y values → set the dirty flag → **the ISP consumes it within 50 ms, no keypress**.
+V-Log is a **camera-level gamma**, not a filter: with it on, both the viewfinder and the final
+image turn into a flat log-looking grade that leaves headroom for post.
+Press **EV + AEL** to open it; the menu entry is kept too (double-tap EV → Custom Func. → V-Log Curve).
 
 | Item | Status |
 | --- | --- |
-| Table | 19 nodes, X fixed at `0–16383`, Y `0–1023`, first 0 / last 1023, strictly increasing |
-| Address chain | `Param0 = read32(0x817dccbc)` → `Gamma = read32(Param0+0x170)` → `Y[i] = Gamma+0xe8c+4i`; **re-resolved with signature checks on every run** — the heap address moves per boot and cannot be hard-coded |
-| Entry | Menu `Custom Func. → TC Curve` (Stock / Log / Flat / High Contrast), or `tc.sh set log\|flat\|hc` |
-| Reach | Enters the HEVC stream: same-scene A/B clips, full-frame Y mean **63.26 → 98.83**, mapping 4→17 / 52→102 / 180→186 |
-| Rollback | `tc.sh off` restores stock; a reboot does it too (runtime memory only, no firmware write) |
+| Entry | **EV + AEL** (hold EV, press AEL); menu `Main menu → Custom Func. → V-Log Curve` (`gui_vlog.NX500`: V-Log toggle / restore stock / curve status / gate check) |
+| What it changes | the gamma-side curve — viewfinder and final image together; **it does not touch the 3D LUT** |
+| Gate check | requires A18 back to stock (`lut.sh off`), neutral PW, no USB inserted — otherwise it refuses; details land in `/tmp/nx-p0/vlog-gate.log` |
+| Relation to LUT | **V-Log is the foundation**: once log is on, the judgement baseline for LUT and FilmLab changes. The two are mutually exclusive — `lut.sh off` first, then enable V-Log |
+| Engine | the curve engine (RC5 `gamma-reload.sh`) lives at `$D/gamma/` on the body and is **not bundled**; without it the menu reports it missing |
+| Rollback | `vlog.sh off` restores stock gamma; a reboot does it too (runtime only) |
 
 ```sh
-sh /opt/usr/nx-ks/tc.sh status             # stock?, Y[9], descriptor
-sh /opt/usr/nx-ks/tc.sh list               # /mnt/mmc/tc/*.tcy
-sh /opt/usr/nx-ks/tc.sh set log|flat|hc    # or any .tcy
-sh /opt/usr/nx-ks/tc.sh off
+sh /opt/usr/nx-ks/vlog.sh status    # current curve state (NXL_GAMMA_RELOAD1 block)
+sh /opt/usr/nx-ks/vlog.sh on|off|toggle
+sh /opt/usr/nx-ks/vlog.sh gate      # gate check, details in /tmp/nx-p0/vlog-gate.log
 ```
 
-Honest limits:
+### With V-Log on: how to reach V-Log LUTs
 
-- **A programmable curve is not extra dynamic range.** The container is still 8-bit 4:2:0 with no 10-bit ground; the Y-mean lift is curve shape, not exposure drift, and not a net DR gain.
-- The anchor is **mid-grey** (camera 128 ↔ sRGB 128); a white-point anchor shifts everything by ~35 codes and needs an 18% grey card to settle.
-- **TC moves the 3D LUT's input domain** — changing both at once requires recalibration.
-- Writes are allowed only in idle preview (directory lock, recording detection, item-by-item readback, automatic restore on any failure); **switching while recording, and whether the photo path is affected, are untested**.
+The LUT panel has **two input domains**, each a directory:
 
-Details: [`docs/current/TC_CURVE_ONDEVICE_2026-11-08.md`](docs/current/TC_CURVE_ONDEVICE_2026-11-08.md) · restoration workflow: [`docs/current/TC_RESTORATION_WORKFLOW_2026-11-08.md`](docs/current/TC_RESTORATION_WORKFLOW_2026-11-08.md)
+| Domain | Directory | What the tables expect |
+| --- | --- | --- |
+| Standard | `looks/` | normal camera JPEG — usable anytime |
+| V-Log | `looks/_vlog/` | V-Log footage (log input) |
+
+**How to switch**: `EV + WiFi` opens the panel → while already on the LUT layer, **tap the LUT tab
+once more**; it turns from `● LUT` into `● LUT·VLOG` and the list switches to `_vlog/`. Tap again
+to go back. Flipping only reloads a list — no A18 write, no DMA.
+
+> ★ **V-Log-domain tables are correct only while V-Log gamma is active.** Selecting one without
+> log is feeding log tables to a normal image — under-exposed and washed out, and it looks like
+> "the table itself is broken".
+>
+> No engine, but you still want the flat log look: bake the log curve into the 3D LUT's **output**
+> with `tools/lutgen/bake_log.py`. For third-party V-Log creative tables (Lumix etc.), see
+> [`docs/current/LUMIX_VLOG_IMPORT_2026-11-20.md`](docs/current/LUMIX_VLOG_IMPORT_2026-11-20.md).
+
+> History: the old 19-node TC curve (Stock / Log / Flat / High Contrast) was removed from the menu
+> on 2026-11-20; `tc.sh` and `gui_tc.NX500` remain on the body as backups. It was dropped because
+> it cannot be attributed when stacked with V-Log / 3DLUT, and it only redistributes 256 code
+> values without adding dynamic range.
 
 ## A2 p7 patch (optional)
 
@@ -355,11 +380,12 @@ An official firmware upgrade rewrites p7 ⇒ **re-flash A2 afterwards**.
 | `install.sh` `info.tg` `nx_cs.adj` | SD-card trigger trio (install / incremental sync) |
 | `scripts/` | All modules → synced to the camera's `/opt/usr/nx-ks/` |
 | `scripts/filmlab.sh` · `scripts/filmlab/recipes.json` | FilmLab engine / authoritative recipe library (79) |
-| `scripts/EV_AEL.sh` · `scripts/EV_MOBILE.sh` · `scripts/EV_EV.sh` | The three key-combo entry points (strip / LUT panel / main menu) |
+| `scripts/EV_AEL.sh` · `scripts/EV_MOBILE.sh` · `scripts/EV_EV.sh` | The three key-combo entry points (V-Log curve / LUT panel / main menu) |
 | `scripts/nxui.sh` · `scripts/nxui/` | NXUI launcher + panel binaries (`nxui.arm` CN / `nxui_en.arm` EN) + fonts + `lang` |
 | `scripts/lut.sh` · `scripts/lut/` | 3D LUT entry + toolchain (`cube2lut` / `nx_slotwrite` / `nx_regtabwrite` / `nx_regtabdump` / `nx_lutload` / `nx_lutptr` / `lutmix`) |
 | `scripts/lut_video.sh` | video LUT watcher (follows `apply`/`off`, state in `/tmp`) |
-| `scripts/tc.sh` · `scripts/tc/*.tcy` | TC curve writer and curve library |
+| `scripts/vlog.sh` · `scripts/gui_vlog.NX500` | V-Log curve toggle and gate check (engine must be installed at `$D/gamma/`) |
+| `scripts/tc.sh` · `scripts/tc/*.tcy` | TC curve writer and library — **retired**; menu entry removed, kept as backup only |
 | `scripts/ssh_hint.sh` · `scripts/dropbear/` | SSH state hint + dropbear itself |
 | `scripts/pwrlog.sh` | power-off forensics sampler (one line per 30 s to SD) |
 | `scripts/gui_*.NX500` | native menu pages (`i18n/en/scripts/` is the English overlay) |
@@ -372,7 +398,8 @@ An official firmware upgrade rewrites p7 ⇒ **re-flash A2 afterwards**.
 - [`docs/README.md`](docs/README.md) — **documentation index** (`current` / `archive` / `evidence`)
 - [`docs/current/HANDOVER_2026-10-16.md`](docs/current/HANDOVER_2026-10-16.md) — entry point: conventions, dead ends, gates, order of work
 - [`docs/current/NXUI_ENABLE_GATE_2026-11-10.md`](docs/current/NXUI_ENABLE_GATE_2026-11-10.md) — why the UI "did not start" and what `diag` checks
-- [`docs/current/TC_CURVE_ONDEVICE_2026-11-08.md`](docs/current/TC_CURVE_ONDEVICE_2026-11-08.md) — TC curve: address chain, write protocol, on-device A/B
+- [`docs/current/UI_LUT_SCOPE_2026-11-20.md`](docs/current/UI_LUT_SCOPE_2026-11-20.md) — LUT's two input domains: tab re-tap, queue index invalidation, edit-mode limits
+- [`docs/current/LUMIX_VLOG_IMPORT_2026-11-20.md`](docs/current/LUMIX_VLOG_IMPORT_2026-11-20.md) — baking third-party V-Log tables into standard-domain tables (S2V composite, dedup, name limit)
 - [`docs/current/VIDEO_LUT_FIRSTFRAME_2026-11-07.md`](docs/current/VIDEO_LUT_FIRSTFRAME_2026-11-07.md) — video first frame carries the LUT
 - [`fw/v1.12/a2/README-A2_EN.md`](fw/v1.12/a2/README-A2_EN.md) — A2 p7 flashing guide
 
@@ -389,21 +416,21 @@ verification, none is "should work".
 | Platform | NX500 firmware **1.12** (all features verified on device) | NX1 1.41 installs, but LUT / FilmLab / NXUI are not enabled there; other firmware versions are refused |
 | Colour | sRGB output: viewfinder and JPEG colours are trustworthy (basis of the 86 bundled tables, 34 of them generated against the measured input domain) | **AdobeRGB applies but is not calibrated**; in-camera smart filters (enum 14–18) take another 24-step dynamic path and are not covered |
 | Carriers | **JPEG stills + viewfinder + video (first frame carries the table)** | **RAW (`.SRW`) is not promised to be baked**; the ground is 8-bit 4:2:0 (10-bit unreachable, the built-in gamma interface has no consumer); a 4-minute take has been verified, frame-rate combinations are untested |
-| Video curve | **Four TC presets, effective within 50 ms, reaches the HEVC stream** | Re-allocates 256 code values only, no extra dynamic range; absolute anchor needs a grey card; switching while recording, stacking with 3D LUT, and the photo path are unverified |
-| Activation | LUT auto-loads after a write (waits for frame end, no keypress); TC takes effect in <50 ms | **Not boot-persistent** — power cycle restores stock; persistence needs an image patch |
+| V-Log | **Camera-level gamma switch** — viewfinder and final image together; gated on A18 back to stock + neutral PW + no USB | The curve engine (RC5 `gamma-reload.sh`) is **not bundled** and must be placed in `$D/gamma/`; once log is on, LUT / FilmLab baselines change and tables must be re-picked |
+| Activation | LUT auto-loads after a write (waits for frame end, no keypress) | **Not boot-persistent** — power cycle restores stock; persistence needs an image patch |
 | Triggering | `nx_lutload.arm once` replays p7's own load sequence, aligned on the `CORE RSZ_OUT1_EOF` frame event | With the screen off or `di-camera-app` gone the ISP does not run, so the DMA-done interrupt never arrives — fall back to "half-press once" |
 | Shape | No flashing, no partition rewrite, fully reversible (A2 is the only optional p7 write) | Without touching the firmware partition, a reboot restores stock |
 
 > It is **not** a colour-management system (no input/output profile conversion), **not** a
 > WYSIWYG promise (viewfinder and still pipelines differ), **not** a crack (no region unlock, no
-> recording limit change). It edits two ISP tables: the 3D look-up table and the video tone curve.
+> recording limit change). It edits two ISP tables: the 3D look-up table and the gamma curve.
 
 ## Hard limits (p7 / firmware, not script bugs)
 
 - **All-seven-dimension PW push needs the A2 firmware**; on stock firmware values outside the normaliser domain are rejected.
 - **p7 has no UI** (zero hits for Font/DrawText/Dialog/Widget) ⇒ the interface can only live on the Linux side.
 - **Combos of three or more keys are unavailable** (the kernel consumes keys first) ⇒ only "hold EV + one key" works; long-press is detected by NXUI from press/release timing, not by hardware.
-- **TC only changes shape, not bit depth**: remapping 256 code values in 8-bit 4:2:0 creates no new dynamic range; `MOVIE_GAMMA_CONTROL` / `IQ[180]` has no consumer and 10-bit encoding does not exist in this firmware.
+- **V-Log only changes gamma shape, not bit depth**: there is no 10-bit ground in 8-bit 4:2:0; `MOVIE_GAMMA_CONTROL` / `IQ[180]` has no consumer and 10-bit encoding does not exist in this firmware.
 - Factory LUT tables are **all stylistic** — "writing identity gives neutral" is not a valid test.
 
 > The film-simulation engine and `.cube` assets live in [nx500-filmsim](https://github.com/WApaperplane/nx500-filmsim) (public).

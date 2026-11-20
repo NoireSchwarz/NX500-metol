@@ -16,6 +16,11 @@ they write the same A18 slot as normal tables; only the input domain differs.
 
 Standard tables live in `looks/`, V-Log tables in `looks/_vlog/`.
 
+Also: **`EV + AEL` now opens the V-Log curve page**. V-Log sits three levels deep in the menu
+(double-tap EV → Custom Func. → V-Log Curve) and it is one of the most frequently flipped switches
+when shooting video; the slot has been free since FilmLab moved into the panel. Same semantics as
+EV+WiFi: opens if closed, closes if already running.
+
 ## 2. Lumix V-Log library
 
 57 tables from [`changyun233/Lumix-V-log-LUTs`](https://github.com/changyun233/Lumix-V-log-LUTs):

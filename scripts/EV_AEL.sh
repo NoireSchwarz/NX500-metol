@@ -1,22 +1,26 @@
 #!/bin/bash
 #=====================================================================
-# EV_AEL.sh —— EV + AEL：本槽位不绑定任何功能（2026-11-20 修正）
+# EV_AEL.sh —— EV + AEL：打开 V-Log 曲线页（2026-11-20）
 #=====================================================================
-# ★ 上一版错在哪：
-#   我把 `EV_AEL.community.sh` 当成"AEL 锁定"一类的无害社区脚本，就
-#   `exec` 了它。实际它是**黑屏录像器**：
-#       blackoutprep &  → killall onscreen_ks + 起 blackout（整屏黑）
-#       blackouton      → st app led off
-#       循环 10 分钟     → stapp "app nx record start" / stop
-#   于是按一下 EV+AEL 就整屏黑 —— 用户报的"黑屏没修复"就是这个，
-#   与 V-Log 无关。
+# 为什么给这个键：V-Log 在菜单里的位置是「双击 EV → 主菜单 → 实用功能 →
+# V-Log 曲线」，三层下去才够得着，而它是拍视频时最常切的开关之一。
+# 这个槽位自从 11-20 把 FilmLab 并进 LUT 面板后就空着，正好用它。
 #
-# ★ 现在的语义：什么都不做。滤镜入口只有 EV+WiFi 一个（面板里 WiFi / AEL
-#   换层）。community 那个黑屏录像脚本**保留在机器上**
-#   （/opt/usr/nx-ks/EV_AEL.community.sh），想用就手动 sh 它，但不再占键。
+#   EV + WiFi  → LUT 面板（LUT / FILMLAB 两个页签）
+#   EV + AEL   → V-Log 曲线页
 #
-# ★ 如果屏幕已经被它弄黑，手动恢复：
+# 语义跟 EV+WiFi 一致：面板没开就开，已经在跑就关（nxui.sh 的 toggle）。
+#
+# ★ 只有这一种写法是对的：`nxui.sh vlog` = 「菜单模式 + 固定页
+#   gui_vlog.NX500」，会跳过 gen_menu 与 filmlab 导出，起得快；直接跑
+#   nxui.arm 会绕过 toggle，第二次按下去又起一个进程。
+#
+# ★ 历史（2026-11-20 上午）：这个槽位曾经 `exec EV_AEL.community.sh`，而
+#   那是**黑屏录像器**（blackoutprep + killall onscreen_ks + 循环录像 10
+#   分钟），按一下就整屏黑 —— 用户报的"黑屏"就是它，与 V-Log 无关。
+#   脚本仍在机器上（/opt/usr/nx-ks/EV_AEL.community.sh），想用就手动 sh。
+#   屏幕已经被弄黑的话：
 #       killall -q blackout
 #       nice -n +15 /opt/usr/nx-ks/onscreen_ks &
 #=====================================================================
-exit 0
+exec /opt/usr/nx-ks/nxui.sh vlog
