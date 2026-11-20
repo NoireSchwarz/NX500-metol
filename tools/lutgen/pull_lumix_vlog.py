@@ -51,6 +51,7 @@ REPO = HERE.parents[1]                       # nx500-modding-work/
 SRC = REPO / "_luts" / "lumix_src"
 BAKED = REPO / "_luts" / "lumix_std"
 NAMED = REPO / "_luts" / "lumix_std_named"
+VLOG_NAMED = REPO / "_luts" / "lumix_vlog_named"
 RAW_BASE = "https://raw.githubusercontent.com/changyun233/Lumix-V-log-LUTs/main/"
 MERGE = Path("/mnt/e/NXWA/_lutweb/vla/merge_standard_luts.py")
 
@@ -101,7 +102,10 @@ COLOR_LAB = [
     ("A/sengo_33", "lcl_sengo"),
     ("B/Dramatic_BlockBuster_33", "lcl_blockbust"),
     ("B/Majestic_Noir_33", "lcl_noir"),
-    ("B/Nostalgic_BleachByPass_33", "lcl_nostbleach"),
+    # 名字上限 12 字符：面板列表 5 格、每格约 133 px，19px 字体下 13 个字符
+    # 就会被裁掉尾巴（实测 `lcl_nostblea`）。所以 "Nostalgic_BleachByPass"
+    # 缩成 lcl_bleach，而不是 lcl_nostbleach。
+    ("B/Nostalgic_BleachByPass_33", "lcl_bleach"),
     ("B/Realistic_Cinetone_33", "lcl_cinetone"),
     ("B/Realistic_Filmtone_33", "lcl_filmtone"),
     ("B/Romantic_Memory_33", "lcl_romantic"),
@@ -192,10 +196,32 @@ def name_copies() -> int:
     return 0
 
 
+def vlog_copies() -> int:
+    """原 V-Log 表另留一份，给 `_vlog/` 域用（页签选 V-Log gamma 时才有意义）。
+
+    ★ 名字必须跟标准版不同：`lut.sh::table_of` 先查 `looks/`、查不到才查
+      `looks/_vlog/`，同名会永远命中标准版 —— 想让面板拿到 log 版就再也拿不到。
+      所以加 `vl_` 前缀（`vc_bleach_sb` → `vl_bleach_sb`）。
+    """
+    VLOG_NAMED.mkdir(parents=True, exist_ok=True)
+    n = 0
+    for _, short, readable in entries():
+        src = SRC / ("%s.cube" % short)
+        if not src.exists():
+            continue
+        base = readable.split("_", 1)[1] if "_" in readable else readable
+        shutil.copyfile(src, VLOG_NAMED / ("vl_%s.cube" % base))
+        n += 1
+    print("vlog copies %d -> %s" % (n, VLOG_NAMED))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--download", action="store_true")
     ap.add_argument("--bake", action="store_true")
+    ap.add_argument("--vlog", action="store_true",
+                    help="只生成 _vlog/ 域用的原表副本（不烘焙）")
     ap.add_argument("--force", action="store_true", help="重新下载")
     args = ap.parse_args()
     if args.download:
@@ -203,9 +229,12 @@ def main() -> int:
         return 0
     if args.bake:
         return bake()
+    if args.vlog:
+        return vlog_copies()
     download(args.force)
     rc = bake()
     name_copies()
+    vlog_copies()
     return rc
 
 
