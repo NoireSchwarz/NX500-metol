@@ -68,21 +68,18 @@ docs/
 
 ### 2.1 LUT：运行态换表（★ 当前主线）
 
+> 10-25 ~ 11-08 的 LUT 记录已按机制合并为 5 份（见 §6.5），每份开头有「关键结论」表与「机制演进」节。
+
 | 文档 | 定位 |
 |---|---|
-| [`ADOBERGB_VIEW_PATH_2026-10-20.md`](current/ADOBERGB_VIEW_PATH_2026-10-20.md) | ★★★★ **AdobeRGB 取景不生效**：View4 四项与「色彩空间 × 屏幕色彩」的映射；`view-set` 一次写全四项；含「生效 ≠ 颜色正确」的边界 |
-| [`STILL_PATH_AUDIT_2026-10-20.md`](current/STILL_PATH_AUDIT_2026-10-20.md) | ★★★★★ **成片无 LUT 的根因**：Still 有 Still6/BV12 两条互斥分支，屏幕色彩开启走 BV12；v8 只改了 Still6。含 `still_probe.sh` 只读判别与修复 |
-| [`LUT_SWITCH_REFRESH_FIX_2026-10-19.md`](current/LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md) | ★★★★★ **切换修复最新入口**：OLED/sRGB 选表已证；双登记项 + 正常事件重载；连续切换、off 恢复实机通过并已安装 |
-| [`LUT_CRCBY_FIX_2026-10-19.md`](current/LUT_FORMAT_AND_INPUT_2026-10-19_to_11-07.md) | ★★★★★ **导入偏色修复**：实机确认 Cr/Cb/Y；HP5、Fuji400H 目视通过；机身转换器更新及 36 张可追溯表重建 |
-| [`LUT_STABLE_BASELINE_HISTORY_2026-10-19.md`](current/LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md) | ★★★★★ **回归优先入口**：用户确认三批曾正常；v6/v7 与同名表哈希对比；异常前后选表/加载状态时间线 |
-| [`LUT_COLORSPACE_AUDIT_2026-10-19.md`](current/LUT_FORMAT_AND_INPUT_2026-10-19_to_11-07.md) | ★★★★★ **色彩坐标复核**：原厂 `(128,128,Y)` 中性轴；Acros 偏绿另查，未替换转换器；切换修复见上一份 |
-| [`LUT_RETARGET_LIVE_2026-10-18.md`](current/LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md) | ★★★★★ **运行态换表闭环**：4 字节登记表 + 写槽 + 半按；View/Still 双链路独立；双向回滚 |
-| [`LUT_REGTAB_READ_2026-10-18.md`](current/LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md) | ★★★★ **Cfg 位定义钉死** + 三张登记表上机回读 22/22 |
-| [`CUBE2LUT_2026-10-18.md`](current/CUBE2LUT_CONVERTER_2026-10-25.md) | ★★★★ **机身 `.cube` 转换器**：格式契约 + 逐字节对照 + `e` 记法 bug |
-| [`LUT_UI_2026-10-18.md`](current/LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md) | ★★★★ **LUT 面板**：三入口、三个安全设计、两个实测 bug |
-| [`NXUI_FOCUS_HANDOFF_2026-10-18.md`](current/NXUI_FOCUS_HANDOFF_2026-10-18.md) | ★★★★ X11 焦点不归还缺陷与回归判据 |
-| [`NXUI_NUKLEAR_2026-10-17.md`](current/NXUI_NUKLEAR_2026-10-17.md) | ★★★★ NXUI 安装与验证（10-17 版） |
-| [`UI_FRAMEWORK_ALTERNATIVES_2026-10-17.md`](current/UI_FRAMEWORK_ALTERNATIVES_2026-10-17.md) | ★★★★ 换 UI 框架的可行性分层结论 |
+| [`LUT_SWAP_MECHANISM_2026-10-16_to_11-08`](current/LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md) | ★★★★★ **换表机制全史（11 份合并）**：E4「成片死路」→ 打错表（A17 vs A12）→ `SelLUT=bits[5:4]` → 4 字节+写槽+半按 → 退出还原 / 改错 `View4[3]` → 秒切免半按 |
+| [`STILL_PATH_AUDIT_2026-10-20`](current/STILL_PATH_AUDIT_2026-10-20.md) | ★★★★★ **成片无 LUT 的根因**：Still6 / BV12 两条互斥分支，屏幕色彩开启走 BV12；含 `still_probe.sh` 只读判别 |
+| [`ADOBERGB_VIEW_PATH_2026-10-20`](current/ADOBERGB_VIEW_PATH_2026-10-20.md) | ★★★★ AdobeRGB 取景不生效：View4 四项与「色彩空间 × 屏幕色彩」的映射；`view-set` 一次写全四项 |
+| [`LUT_FORMAT_AND_INPUT_2026-10-19_to_11-07`](current/LUT_FORMAT_AND_INPUT_2026-10-19_to_11-07.md) | ★★★★★ **表格式与输入端（6 份合并）**：链路坐标是 CrCbY、17³ native、`measure_tone.py` 反解输入曲线 |
+| [`LUT_LIBRARY_2026-10-25`](current/LUT_LIBRARY_2026-10-25.md) | ★★★★ **库（6 份合并）**：体检 / 风格复核 / 去重补隙 / 品牌色 / 外部 CLUT 的 `512²=64³` 解码坑 |
+| [`LUT_MIX_AND_LIBRARY_OPS_2026-10-31`](current/LUT_MIX_AND_LIBRARY_OPS_2026-10-31.md) | ★★★★ **混合与库操作（2 份合并）**：逐节点插值 ≡ 输出域混合；`lutmix.arm` 八动词 + 三态面板 |
+| [`LUT_PIPELINE_ROADMAP_2026-10-09_to_11-01`](current/LUT_PIPELINE_ROADMAP_2026-10-09_to_11-01.md) | ★★★ **管线（3 份合并）**：三路径设计 → 复核 → 「转换与铺设已全在机内」 |
+| [`NXUI_NUKLEAR_2026-10-17`](current/NXUI_NUKLEAR_2026-10-17.md) · [`NXUI_FOCUS_HANDOFF_2026-10-18`](current/NXUI_FOCUS_HANDOFF_2026-10-18.md) · [`UI_FRAMEWORK_ALTERNATIVES_2026-10-17`](current/UI_FRAMEWORK_ALTERNATIVES_2026-10-17.md) | ★★★★ NXUI 安装与验证、X11 焦点不归还缺陷、换 UI 框架的可行性分层 |
 
 ### 2.2 上机、交付与设计（10-15 ~ 10-16）
 
