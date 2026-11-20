@@ -84,3 +84,45 @@ preflight `READY=1`。
 - 在此之前，V-Log 只当**拍照/取景**用；要录像先 `vlog.sh off`。
 - `lut.sh video-off` 在 VLOG 模式下救不了：lut-core 的分支让它走 `log_neutral`，
   末尾又 `video_enable`。必须用 `vlog.sh video-off`（直接调 dyn-restore）。
+
+## 6. 当日续：A/B/C 三分实验（结论：RC5 的 gamma 引擎退役）
+
+`scripts/probe-black.sh` 把三条路径拆开跑，每步自恢复（`dyn-restore` → `vlog.sh off`
+→ `filmlab neutral`），并在屏幕上弹字母标记（弹窗是独立 X 窗口，黑屏时仍可见）。
+
+| 步 | 只做 | 结果 |
+|---|---|---|
+| A | `lut.sh clean-log-prepare`（写 A18 + 三张登记表 + video_enable） | 跑通；A18 `4c0cc78c` → 变 → 自动恢复回 `4c0cc78c` |
+| B | `gamma-reload.sh log`（native gamma 事务） | 这次**成功**：`qualified=1 applies=1 queues=29 fault=0` |
+| C | `vlog.sh toggle`（完整链） | 跑通，`VIDEO_POINTERS=restored` |
+
+审计目录补上之后三条都能跑 —— 说明当年"菜单不可用 + 黑屏"就是缺目录造成的半状态。
+
+**但是**：14:40 与 14:49 各有一次**整机重启**（uptime 归零、/tmp 清空），
+都发生在 V-Log 往返之后。审计 JSON 里 `fault=0`、`transaction_fault=0`、
+`state_consistent=true`，引擎自认为一切正常 —— 重启不归它管，它也不知道。
+
+⇒ **结论：这台机器上任何"直接改 gamma"的路都不可靠**：
+- RC5 的 native 事务：能成功，但会随机把整机搞重启（两次实测）；
+- TC 曲线的 19 节点写入：`tc.sh set log` 现在会 `ERR=REFRESH_FAIL` 自己回滚；
+- 唯一稳定的是**写 A18 3D LUT**（`lut.sh apply` → `OK instant switch`，录像/取景/照片同路径）。
+
+## 7. 所以「LUT 与 V-Log 同时启用」的正确解法：烘成一张表
+
+既然 gamma 动不得，就把 log 曲线**烘进 3D LUT**：一张表里同时包含 log 编码和风格，
+写进 A18，走已验证的换表闭环。没有第二次写入，就没有不同步、没有半状态、不会重启。
+
+`tools/lutgen/bake_log.py`：
+
+```sh
+python tools/lutgen/bake_log.py looks/fuji_classicchrome.bin -d out_vlog/     # k=20
+python tools/lutgen/bake_log.py looks/x.bin -o vk_x.bin --log 10              # 更轻
+```
+
+- 曲线是解析式 `Y' = log(1+k·y)/log(1+k)`，k 默认 20（64→150，192→233）。
+- **不要用 `scripts/tc/*.tcy` 来烘**：那 19 点是 TC 的"显示→场景"反 gamma 表
+  （flat 在输入 64 处给 21），方向相反，套上去是加对比而不是 log。
+- 输出仍是 19,712 B 的 `.bin`，直接丢进 `/mnt/mmc/looks/` 就是一条 look。
+
+代价说清楚：8bit 的"假 log"——动态范围不会增加（11-07 已判视频无 10bit 地基），
+但暗部被抬起来、高光被压住，后期拉得动，而且**录像不会黑**。
