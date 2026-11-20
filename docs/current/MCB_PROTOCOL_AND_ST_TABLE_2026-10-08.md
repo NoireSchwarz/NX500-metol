@@ -1,6 +1,6 @@
 # st 全表 × MCB 协议 × di-camera-app 全量反编译（2026-10-08）
 
-> 承接 [`ST_RE_AND_REPRO_2026-10-08.md`](ST_RE_AND_REPRO_2026-10-08.md)。本篇 = 三项深化：
+> 承接 [`ST_RE_AND_REPRO_2026-10-08.md`](../archive/ST_RE_AND_REPRO_2026-10-08.md)（已归档）。本篇 = 三项深化：
 > **① di-camera-app 全量反编译 ② st top_cmd_list 全表（运行时真值） ③ MCB 消息协议档案**。
 > 原始数据：`raw8/repro/{st_cmd_table_runtime.txt, mcb_command_dict_raw.txt, mcb_exports_raw.txt, mcb_strings.txt, sysv_msg_capture.txt}`
 > Ghidra 导出：`E:\ghidra_out\{di-camera-app.arm_dump, libmulticore-bridge.so_dump, libshell-command.so_dump, mcbtest.arm_dump}`

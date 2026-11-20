@@ -1,7 +1,7 @@
 # 相机 App 结构盘查（di-camera-app）— 面向我们的 App 开发
 
 > 日期：2026-10-07 ｜ 样本：`test_server/appprobe/di-camera-app`（4,773,516 B，从实机拉取）
-> 配套：`docs/current/CAMERA_MENU_ARCHITECTURE_2026-10-07.md`（菜单专项）、`docs/current/NATIVE_UI_DESIGN_2026-10-07.md`（我们自己的 UI 设计）
+> 配套：`docs/current/CAMERA_MENU_ARCHITECTURE_2026-10-07.md`（菜单专项）、`docs/archive/NATIVE_UI_DESIGN_2026-10-07.md`（我们自己的 UI 设计，已归档）
 > 目的：把相机**官方主 App** 的骨架摸清，回答「我们要做 App，该学它的哪一层、能复用什么、哪些是墙」。
 
 ---

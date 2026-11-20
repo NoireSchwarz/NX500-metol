@@ -224,7 +224,7 @@ menu render  i:%d  count:%d _position[ MENU_DEPTH_1 ]:%d     ← 绘制调试打
 
 ## 5. 与 NATIVE_UI_DESIGN 的关系
 
-`docs/current/NATIVE_UI_DESIGN_2026-10-07.md` 的结论**依然有效且更划算**：
+`docs/archive/NATIVE_UI_DESIGN_2026-10-07.md`（已归档）的结论**依然有效且更划算**：
 
 | 方案 | 本质 | 与系统菜单关系 |
 |---|---|---|

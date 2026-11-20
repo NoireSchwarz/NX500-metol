@@ -218,3 +218,31 @@ docs/
 
 > 若将来要压缩 `current/` 体积，安全的候选是 §2.2 已声明的 10-07 ~ 10-14 过程记录，
 > 归档而非删除 —— 但需先确认这些文件未被 `evidence/` 或脚本按路径引用。
+
+### 6.1 本轮实际归档（8 份 → `archive/`）
+
+`U1_ONMACHINE_2026-10-12`、`U4_ONMACHINE_RESULT_2026-10-11`、`U5_ROLLBACK_DRILL_2026-10-11`、
+`FLAB_DATAFLOW_DESIGN_2026-10-09`、`FILMLAB_WHEEL_PREVIEW_FEASIBILITY_2026-10-11`、
+`UNKNOWN_STRUCTURES_AND_PROJECT_FORK_PLAN_2026-10-08`、`P7_CODE_MAP_COVERAGE_2026-10-08`、
+`FW_NATIVE_UI_ONEKEY_FEASIBILITY_2026-10-10`。
+
+筛选标准：日期 10-07~10-14 **且** 未被本索引引用 **且** 不带 10-18 横幅（带横幅者按规范留 `current/`）
+**且** 不含被脚本 / `fw/` / 根 README 按路径引用的内容。
+一次性执行记录与被实现取代的设计 → 归档；补丁包（A1/A2）、逆向证据（REA_P7）、死路记录（G5-3、P8）、
+能力探针（W6）→ 保留。`current/` 170 → 162 份。
+
+### 6.2 断链修复（5 处）
+
+因 10-18 与本轮归档而指向旧位置的引用，已改为指向 `archive/`：
+`CAMERA_APP_STRUCTURE`、`CAMERA_MENU_ARCHITECTURE`（→ `NATIVE_UI_DESIGN_2026-10-07`）、
+`FILMLAB_LUT_NATIVE_UI_GOALS`、`MEM_INJECTION_EVAL`（→ `NATIVE_UI_ROADMAP_2026-10-15`）、
+`MCB_PROTOCOL_AND_ST_TABLE`（→ `ST_RE_AND_REPRO_2026-10-08`）。
+
+> `current/` + `README` 层的相对链接现已 **0 断链**；`archive/` 内部仍有 18 处互相引用失效，
+> 按 §5 约定不修（用文件名在本目录 `current/` 里找）。
+
+### 6.3 一个说明：文档里的 `raw8/`、`looks/*.bin` 为什么点不开
+
+审计发现 45 份入口文档引用 `raw8/…`、`rea-evidence/…`、`looks/*.bin`、`test_server/*/产物` 等路径，
+这些是**本地工作目录**（逆向中间产物、相机取回的二进制），按仓库策略不入库（`raw8/` 只保留
+`emmcbak/` 下的分区备份）。它们记录的是取证落点，不是失效链接，**不要为了"点得开"去删这些路径**。

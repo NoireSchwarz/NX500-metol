@@ -202,7 +202,7 @@ FUN_0004ccf4(ext_id, ptr, sz)      ; @0x4ccf4 = pwsend.arm 的落点
 | 一键滤镜现行设计（apply = 写槽+切槽+直推）| `docs/current/PW_ONECLICK_DESIGN_2026-10-09.md` |
 | MCB 两个编号空间（业务 68 条 / CID 33 条）+ `arp*NtfyFnc` 派发分组 | `docs/current/MCB_COMMAND_ENUM_TABLE_2026-10-08.md` §5 |
 | p7 userdata 97 条（含 PWBRK* 家族；**无**逐维 PWSATURATION 等条目）| `docs/evidence/p7/50_capdtm.txt` |
-| p7 无 UI 铁证 / 原生菜单层 | `docs/current/FW_NATIVE_UI_ONEKEY_FEASIBILITY_2026-10-10.md` |
+| p7 无 UI 铁证 / 原生菜单层 | `docs/archive/FW_NATIVE_UI_ONEKEY_FEASIBILITY_2026-10-10.md`（已归档） |
 
 ---
 
