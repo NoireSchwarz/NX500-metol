@@ -436,7 +436,30 @@ static void poll_child(void) {
         if (!success) message(refresh_after ? "操作失败 · 详情见日志" : "命令失败 · 详情见日志");
         else if (refresh_after) { refresh_pending = refresh_after; message("已完成 · 正在刷新库"); }
         else if (close_after_child) { /* fall through to the close chain */ }
-        else message("命令已完成");
+        else {
+            /* 菜单里的脚本经常用一行 `ERR ...` 说清楚为什么失败（例如
+             * vlog.sh 那句 "ERR View4 is not factory; disable other LUT mods"）。
+             * 它们同时还弹 popup，但 popup 会被这块面板盖住 —— 用户看到的就是
+             * "点了没反应"。所以把第一行 ERR/FAIL 直接搬到面板的状态行上。 */
+            const char *e = output, *hit = NULL;
+            size_t hitlen = 0;
+            while (*e) {
+                const char *nl = strchr(e, '\n');
+                size_t len = nl ? (size_t)(nl - e) : strlen(e);
+                if ((len > 3 && (!strncmp(e, "ERR", 3) || !strncmp(e, "FAIL", 4))) ||
+                    (len > 6 && !strncmp(e, "REJECT", 6))) {
+                    hit = e; hitlen = len;
+                }
+                if (!nl) break;
+                e = nl + 1;
+            }
+            if (hit) {
+                char tmp[192];
+                if (hitlen > sizeof tmp - 1) hitlen = sizeof tmp - 1;
+                memcpy(tmp, hit, hitlen); tmp[hitlen] = 0;
+                message(tmp);
+            } else message("命令已完成");
+        }
         refresh_after = 0;
         if (close_after_child) {
             close_after_child = 0;

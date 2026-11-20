@@ -84,6 +84,8 @@ do_curve() {   # $1 = toggle | log | restore
     need_engine || return 3
     ensure_run
     # 只挡「上曲线」这一侧；off 任何时候都放行 —— 黑屏时那是唯一的自救。
+    marker=$RUN/.prepare-stamp
+    [ -d "$RUN" ] && : > "$marker"
     case "$1" in
     toggle|log)
         if tc_custom; then
@@ -97,6 +99,21 @@ do_curve() {   # $1 = toggle | log | restore
     printf '%s\n' "$out"
     if [ "$rc" != 0 ]; then
         reason=$(field "$out" reason)
+        # 真正的原因常常只在 clean-log-prepare 的日志里（gamma-reload.sh 只回
+        # 一个原因码）。最常见的一条是挂了 LUT 时它拒绝：
+        #   ERR View4 is not factory; disable other LUT mods and power-cycle first
+        # 面板的状态行会显示我们 echo 出来的 `ERR ...` 那一行 —— 弹窗会被
+        # 面板自己挡住，靠弹窗等于没提示。
+        hint=
+        if [ -r "$RUN/clean-log-prepare.log" ] && [ "$RUN/clean-log-prepare.log" -nt "$marker" ]; then
+            hint=$($BB sed -n 's/^ERR //p' "$RUN/clean-log-prepare.log" | $BB head -n 1)
+        fi
+        case "$hint" in
+        *"View4 is not factory"*)
+            printf 'ERR 已挂 LUT：先 lut.sh off 再开 V-Log\n'
+            pop "已挂 LUT，先 lut.sh off" 5
+            return 4 ;;
+        esac
         pop "V-Log 失败: ${reason:-rc=$rc}" 4
         return "$rc"
     fi

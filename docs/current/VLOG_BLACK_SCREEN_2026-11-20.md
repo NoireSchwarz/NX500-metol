@@ -158,3 +158,43 @@ look : vk_fuji_soft         （k=6, ev=-0.25，白 255→214、中 128→153）
 
 这条验证的作用：它证明「LUT 走 A18」那条路在录像里是稳的，
 而 RC5 那条「改 gamma + 重指 DYN24」的路是黑屏与重启的来源 —— 两者不是同一件事。
+
+## 9. 「LUT + V-Log 同时」在 RC5 的设计里是被禁止的
+
+`clean-log-prepare` 第一步是 `restore_factory`，它要求 View4 指向原厂。挂了任何
+LUT（我们的 `lut.sh apply` 就是把 View4 指到 A18）之后它直接拒绝：
+
+```
+ERR View4 is not factory; disable other LUT mods and power-cycle first
+```
+
+2026-11-20 15:29 在机上实测到这一行（`/tmp/nx-lut-lite/clean-log-prepare.log`），
+当时 A18 挂着 `vk_fuji_soft`。
+
+所以结论只有两条：
+
+| 想做什么 | 怎么做 |
+|---|---|
+| 用 RC5 的真 V-Log | 先 `lut.sh off` 撤掉 LUT —— **两者不能同时** |
+| 要 log 和风格同时生效 | 把 log 烘进 LUT（`tools/lutgen/bake_log.py`），一条表里两件事 |
+
+## 10. 为什么「实用功能」里那两项看起来"不可用"
+
+两个不同的原因，都跟功能本身无关：
+
+1. **V-Log 开关**：被上面那条 `View4` 门控拒绝。而 `gamma-reload.sh` 只回一个原因码
+   `CLEAN_LOG_PREPARE_FAILED_RESTORE_FIRST`，真因只写在它自己的日志里 ——
+   弹窗上那句原因码对人没有意义，何况……
+2. **Metol 版本 / 所有弹窗**：`popup_timeout` 是独立窗口，但会被 nxui 这块
+   override-redirect 面板**盖住**。所以 `ver.sh` 三个弹窗在跑、用户看不到 →
+   "点了没反应"。
+
+改法（nxui + vlog.sh）：
+
+- 子进程结束时把输出里**最后一行 `ERR`/`FAIL`/`REJECT`** 搬到面板状态行上显示
+  （面板自己永远在最上层，不依赖窗口层叠）；
+- `vlog.sh` 遇到 `View4 is not factory` 时输出一句中文：
+  `ERR 已挂 LUT：先 lut.sh off 再开 V-Log`，同时弹窗也换成这句。
+
+实测：挂 `vk_fuji_soft` 后按 V-Log 开关，面板输出
+`ERR 已挂 LUT：先 lut.sh off 再开 V-Log`。
