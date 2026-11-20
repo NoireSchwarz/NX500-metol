@@ -1,25 +1,27 @@
 #=====================================================================
-# gui_evwifi.NX500 —— EV+WiFi 合并页（2026-11-20）
+# gui_evwifi.NX500 —— EV+WiFi 合并页（2026-11-20，nxui 菜单）
 #=====================================================================
 # ★ 为什么合并（省键位）：
-#     FilmLab 独占了 EV+AEL，LUT 独占了 EV+WiFi，V-Log 曲线还想再要一组。
+#     FilmLab 原本独占 EV+AEL，LUT 独占 EV+WiFi，V-Log 还想再要一组。
 #     三组组合键换三个入口不划算 —— 收进一页，EV+WiFi 一键进，
-#     EV+AEL 就此空出来可以复用。
-#     代价要说清楚：LUT 从「一键直达」变成「一键进页 + 一按」。
+#     EV+AEL 让给 V-Log 曲线。代价：LUT 从「一键直达」变成「进页 + 一按」。
 #
-# ★ 为什么这一页走 mod_gui 而不是 nxui 面板：
-#     nxui 是单实例，面板里再 exec `nxui.sh lut` 时 nxui.sh 会看到
-#     pidof nxui.arm 命中自己 → killall 自杀 → 「只杀不起」。
-#     mod_gui 是另一个进程，`nxui.sh <mode>` 杀掉 mod_gui 再起面板，
-#     这正是 gui_func.NX500 里「LUT 滤镜」一直在用的路径，零新风险。
+# ★ 这一页由 nxui 的菜单渲染器显示（不是 mod_gui）。
+#      nxui.sh menu gui_evwifi.NX500
+#   菜单页与面板是同一个二进制、同一套 .NX500 解析，不存在第二套 UI 栈。
 #
-# 格式：button|标签|命令   /   @ 前缀 = 打开子菜单
-# ★ 标签长度铁律（2026-10-04 实机截图教训）：mod_gui 是 2 列按钮网格，
-#   标签超长会被【静默截断成「一 键...」】。控制在 6 个全角字符内。
+# ★ 面板切换必须用 `nxui.sh switch <mode>`：
+#    nxui 是单实例。从菜单页直接 exec `nxui.sh lut`，nxui.sh 里的
+#    pidof nxui.arm 会命中正在退出的自己 → killall 自杀 →「只杀不起」。
+#    switch 先发 TERM、轮询等旧进程真的消失，再起新的。
+#
+# 格式：button|标签|命令   /   @ 前缀 = 打开子菜单（同一渲染器内切页）
+# ★ 标签长度铁律：控制在 6 个全角字符内。
+# ★ 本页 6 条 = nxui 菜单一页的上限（6/页，55px 行高）。
 #=====================================================================
 
-button|FilmLab|nxui.sh filmlab
-button|LUT 滤镜|nxui.sh lut
+button|FilmLab|nxui.sh switch filmlab
+button|LUT 滤镜|nxui.sh switch lut
 button|V-Log 曲线|@/opt/usr/nx-ks/gui_vlog.NX500
 
 button|实用功能|@/opt/usr/nx-ks/gui_func.NX500

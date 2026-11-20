@@ -22,11 +22,47 @@ is_nx500() {
     done < /etc/version.info 2>/dev/null
     return 1
 }
+# ★ 2026-11-20：三个新入口
+#   nxui.sh switch <mode>  从菜单里切到另一个面板（先让旧面板退净再起新的）
+#   nxui.sh vlog           菜单模式 + V-Log 页（EV+AEL 用）
+#   nxui.sh menu [page]    菜单模式 + 指定页（缺省 gui_ini.NX500）
+SWITCH=
+if [ "${1:-}" = switch ]; then
+    SWITCH=1
+    shift
+    if [ $# -eq 0 ]; then
+        echo 'nxui.sh switch menu|filmlab|lut|vlog [page]' >&2
+        exit 2
+    fi
+fi
 MODE=${1:-filmlab}
 # 额外参数原样透传给 nxui.arm（例如 --inputlog /mnt/mmc/nxui/keys.log）。
 # 必须先存成字符串：下面每一段都在用 `set --` 重建参数表，$@ 会被覆盖。
 # 只支持不含空格的参数（键位采集路径不会带空格）。
 [ $# -gt 0 ] && shift
+
+# vlog 只是「菜单模式 + 固定页」的别名，不必再开一个 nxui 模式。
+# PAGE 非空同时意味着「不要跑 gen_menu / filmlab 导出」——那些是给
+# gui_ini 及其动态子页准备的，固定页不需要，白等几百毫秒。
+PAGE=
+case "$MODE" in
+vlog)
+    MODE=menu
+    PAGE=gui_vlog.NX500
+    ;;
+menu)
+    # nxui.sh menu <页>：只吃菜单文件名，别把 --inputlog 这类透传参数当页名
+    if [ $# -gt 0 ]; then
+        case "$1" in
+        --*) : ;;
+        *)
+            PAGE=$1
+            shift
+            ;;
+        esac
+    fi
+    ;;
+esac
 EXTRAS="$*"
 case "$MODE" in
   disable)
@@ -57,13 +93,26 @@ case "$MODE" in
     exit 0 ;;
   menu|filmlab|lut|demo|list) ;;
   *)
-    echo 'nxui.sh menu|filmlab|lut|demo|list|stop|enable|disable|available|diag [extra...]'
+    echo 'nxui.sh menu [页]|filmlab|lut|vlog|switch <mode>|demo|list|stop|enable|disable|available|diag [extra...]'
     echo '  extra 透传给 nxui.arm，例：nxui.sh lut --inputlog /mnt/mmc/nxui/keys.log'
     exit 2 ;;
 esac
 [ -x "$BIN" ] || exit 1
 is_nx500 || exit 1
-if $BB pidof nxui.arm >/dev/null 2>&1; then
+# ★ switch：菜单里点「FilmLab / LUT 滤镜」走这里。
+#   不能直接调 `nxui.sh <mode>` —— 那一路是「再按一次就关」的 toggle，
+#   而且 pidof 会命中还没退净的旧进程，结果就是「只杀不起」。
+#   所以这里先发 TERM，再轮询等它真的消失，才起新的。
+#   （nxui 收到 TERM 只清焦点+退窗，不等子进程；被杀的父进程不会等我们。）
+if [ -n "$SWITCH" ]; then
+    $BB killall -q -TERM nxui.arm 2>/dev/null
+    _i=0
+    while $BB pidof nxui.arm >/dev/null 2>&1 && [ "$_i" -lt 40 ]; do
+        $BB usleep 50000 2>/dev/null || $BB sleep 1
+        _i=$((_i + 1))
+    done
+    unset _i
+elif $BB pidof nxui.arm >/dev/null 2>&1; then
     $BB killall -q -TERM nxui.arm
     exit 0
 fi
@@ -71,7 +120,7 @@ fi
 # recipes need no shell parser, rewrite to the SD card, or extra process.
 # LUT mode reads its recipes from the look library instead, so it skips both
 # the hash and the file read entirely.
-if [ "$MODE" != lut ]; then
+if [ "$MODE" != lut ] && [ -z "$PAGE" ]; then
     [ -d "$LAB" ] || mkdir -p "$LAB"
     if [ -f "$LAB/recipes.json.nx-prev" ]; then
         [ -r "$D/nxstore.sh" ] || exit 1
@@ -86,7 +135,7 @@ if [ "$MODE" != lut ]; then
         printf '%s\n' "$SIG" > /tmp/nxui-export.sig
     fi
 fi
-if [ "$MODE" = menu ]; then
+if [ "$MODE" = menu ] && [ -z "$PAGE" ]; then
     "$D/gen_menu.sh" >/dev/null 2>&1
     # Bitrate/ramp menus are generated only when entered, without global sync.
 fi
@@ -114,7 +163,7 @@ fi
 export NXUI_STATE_DIR=$NXS
 # Xft uses fontconfig, so Chinese can use the existing Samsung TTF.
 set -- --root "$D" --recipes "$LAB/recipes.txt" --engine "$D/filmlab.sh"
-if [ "$MODE" = menu ]; then set -- "$@" --menu gui_ini.NX500; fi
+if [ "$MODE" = menu ]; then set -- "$@" --menu "${PAGE:-gui_ini.NX500}"; fi
 if [ "$MODE" = lut ]; then
     # LUT 模式：滤镜库来自 lut.sh，执行器也是 lut.sh（apply / off）
     # The look list only changes when a file is added or removed, and that

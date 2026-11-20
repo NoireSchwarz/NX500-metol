@@ -42,6 +42,14 @@ pop() {
 
 engine_ok() { [ -f "$ENGINE" ] && [ ! -L "$ENGINE" ] && [ -x "$ENGINE" ]; }
 
+# ★ RC5 的顺序瑕疵：gamma-reload.sh 的 status 分支在 `mkdir -p $RUN` 之前
+#   就 exec 了，而 $RUN=/tmp/nx-lut-lite 是 tmpfs，重启即空。
+#   ⇒ 重启后第一次 status 必报 IDLE_RAM_REPORT_UNAVAILABLE（rc=1）。
+#   这里先补目录，绕开它，不改 RC5 的脚本（改了哈希链就断）。
+ensure_run() {
+    [ -d "$RUN" ] || $BB mkdir -p "$RUN" 2>/dev/null
+}
+
 need_engine() {
     engine_ok && return 0
     say ENGINE "MISSING $ENGINE"
@@ -54,6 +62,7 @@ field() { printf '%s\n' "$1" | $BB sed -n "s/^$2=//p" | $BB head -n 1; }
 
 do_curve() {   # $1 = toggle | log | restore
     need_engine || return 3
+    ensure_run
     out=$("$ENGINE" "$1" 2>&1)
     rc=$?
     printf '%s\n' "$out"
@@ -76,6 +85,7 @@ do_status() {
         say ENGINE "MISSING $ENGINE"
         return 3
     fi
+    ensure_run
     "$ENGINE" status
 }
 
