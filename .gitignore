@@ -228,6 +228,14 @@ test_server/slp/a2_qemu/logs/*.elf
 # LUT 生成中间产物（.cube 可由 gen_luts.py 重新生成）
 tools/lutgen/cube/
 
+# ===== Lumix V-Log 导入的中间产物（2026-11-20）=====
+# 源 .cube（57 MB）+ 烘成的 Standard .cube（72 MB）+ 可读名副本（71 MB）都能用
+# `tools/lutgen/pull_lumix_vlog.py` 从 GitHub 重跑出来，不入库；只留最终
+# 17³ 槽表 _luts/lumix_bin/（1.2 MB），那才是可直接上机的东西。
+_luts/lumix_src/
+_luts/lumix_std/
+_luts/lumix_std_named/
+
 # ===== dropbear ssh（2026-10-22）=====
 # dl/ 是 deb 下载 + 解包的 glibc 2.13 sysroot，README 有重建步骤（curl + dpkg-deb）
 test_server/dropbear/dl/
