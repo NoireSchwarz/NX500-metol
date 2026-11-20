@@ -102,5 +102,19 @@ PW 的在 prefman 槽 9-12 里，面板读不到、也不该为了画一个灯�
 | 主机编译（gcc，-Wall -Wextra） | 通过，仅有既存的 format-truncation 警告 |
 | `test_model` / `test_services` | PASS |
 | 三视图渲染 720×336 / 720×208 | 页签、列表、按钮行、状态行均无裁切 |
-| ARM 交叉编译（camera ABI） | 472K，无 EFL 依赖，glibc ≤ 2.13 |
-| 真机 | 见当日日志 |
+| `verify_display.py`（host） | 全绿：interaction / lut-interaction / library-ui / **layers-2b** / service / performance / focus |
+| `verify_display.py`（arm，qemu + 相机 ABI） | 全绿，KEYMAP 24 项全解析 |
+| ARM 交叉编译 | 472K，无 EFL 依赖，glibc ≤ 2.13 |
+| 真机三视图 | `recipes=89`(LUT) / `79`(PW)，720×336 与 720×208 无裁切 |
+| 真机 live 面板 | 首帧 1151 ms（font tier2 143 ms + map 777 ms），起停正常 |
+| 部署 | 6 文件三处 md5 全等；SD 母本 185/185 无重复目录项 |
+
+复现：
+
+```bash
+# 主机
+bash build.sh host && NXUI_VERIFY_TARGET=host python3 verify_display.py
+# 真机（★ 不要用 nxui.sh … --snapshot 连发：toggle 分支会互相 killall）
+nxui.arm --root /opt/usr/nx-ks --recipes /mnt/mmc/filmlab/recipes.txt \
+         --lut-recipes /tmp/nxui-look.rec --tab lut --snapshot /tmp/t.ppm
+```
