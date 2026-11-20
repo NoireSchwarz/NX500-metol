@@ -24,7 +24,7 @@ Release 说明中英并列。
 | 按键 | 打开 | 备注 |
 |---|---|---|
 | **EV + AEL** | FilmLab 滤镜条（79 条配方） | 点选即时预览，`保存并关闭` 落盘 |
-| **EV + WiFi** | 3D LUT 面板（86 张表） | 点选即换表，**不用半按** |
+| **EV + WiFi** | 3D LUT 面板（标准域 / V-Log 域） | 点选即换表，**不用半按**；已在 LUT 层时再点一次页签换域 |
 | **双击 EV** | 主菜单（NXUI 分页界面） | 菜单内容见「[相机菜单一览](#相机菜单一览)」 |
 | **半按快门** | 关闭当前面板 | LUT/FilmLab 面板关闭后**保留当前效果** |
 
@@ -212,6 +212,31 @@ sh /opt/usr/nx-ks/nxui.sh diag       # 面板能不能用，一次看全
 | 边界 | 全是内存操作，**断电即回原状**（「开机即生效」仍需改固件镜像）；sRGB 颜色可信，AdobeRGB 只保证生效 |
 | 装载写序 | ⛔ 自己写 `+0x00C` 必须走完整 8 步：`OnOff` → 清/置 Acc → 地址 → Cfg 通道位 → bit8 脉冲 → **末尾复位 Acc**，并等取景帧结束。只写地址 + 脉冲就会花屏 —— 这才是 10-08 那条「禁区」的真实原因 |
 
+### 两个输入域：标准 ⇄ V-Log
+
+LUT 面板顶栏只有两个页签：`● LUT` 与 `FILMLAB`。V-Log 表**不占第三个页签** ——
+它和普通表写的是同一个 A18 槽，区别只是「这张表按哪种输入域做的」。
+
+| 你在哪 | 点 LUT 页签的结果 |
+|---|---|
+| FilmLab 层 | 回到 LUT 层（域不变） |
+| **已在 LUT 层** | **换域：标准表 ⇄ V-Log 表**，页签变成 `● LUT·VLOG` |
+
+换域只重读一份清单（`/tmp/nxui-look-vlog.rec`），**不写 A18、不触发 DMA**，两个域各自
+记住停在哪张表。两本目录：
+
+| 域 | 目录 | 表的输入域 |
+|---|---|---|
+| 标准 | `looks/` | 显示参考（相机 JPEG 域）—— 随时可用 |
+| V-Log | `looks/_vlog/` | V-Log 编码 —— **只有 V-Log gamma 生效时才正确** |
+
+> V-Log 域的曲线引擎在机身 `$D/gamma/`，默认不随包安装。没有引擎时选 V-Log 表 =
+> 双重错位（表以为素材很暗，实际很正常）⇒ 欠压发灰。没有引擎就用标准域。
+>
+> 第三方 V-Log 创意表（Lumix V-Log LUTs 等）怎么烘成标准域可用的表，见
+> [`docs/current/LUMIX_VLOG_IMPORT_2026-11-20.md`](docs/current/LUMIX_VLOG_IMPORT_2026-11-20.md)。
+> **名字上限 12 字符**：列表 5 格 × 133 px，13 字符起会被裁。
+
 ### 滤镜库与混合
 
 | 能力 | 用法 |
@@ -377,3 +402,14 @@ sh /opt/usr/nx-ks/tc.sh off
 - 出厂 LUT 表**全是风格表**，不能拿"写 identity 得中性"当判据。
 
 > 胶片仿真引擎与 `.cube` 素材另见 [nx500-filmsim](https://github.com/WApaperplane/nx500-filmsim)（public）。
+
+## 致谢
+
+- **[NoireSchwarz/NX500_SRW_reprocessing_6.5K-oversampling](https://github.com/NoireSchwarz/NX500_SRW_reprocessing_6.5K-oversampling)**
+  —— 松下 V-Log ⇄ Standard 曲线的研究与拟合。没有这条曲线，V-Log 创意表在 NX500 上只能
+  是双重错位的灰片，1.15.7 的烘焙链路也就不成立。
+- **[changyun233/Lumix-V-log-LUTs](https://github.com/changyun233/Lumix-V-log-LUTs)**
+  —— 107 张 V-Log 创意表的整理与预览（Booz / 尝云 / 翰博 / Lucas Hu / Lumix Color Lab /
+  VariCam 官方）。这些表**不随包分发**，请从原链接获取。
+- **[ottokiksmaler/nx500_nx1_modding](https://github.com/ottokiksmaler/nx500_nx1_modding)**
+  —— 项目血缘上游。

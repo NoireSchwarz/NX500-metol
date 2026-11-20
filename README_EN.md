@@ -24,7 +24,7 @@ README), with release notes in both languages.
 | Key | Opens | Note |
 |---|---|---|
 | **EV + AEL** | FilmLab strip (79 recipes) | tap to preview, `Save & close` persists |
-| **EV + WiFi** | 3D LUT panel (86 tables) | tap to switch, **no half-press needed** |
+| **EV + WiFi** | 3D LUT panel (standard / V-Log domain) | tap to switch, **no half-press needed**; tap the tab again while already on LUT to flip domain |
 | **Double-tap EV** | Main menu (NXUI paged UI) | items are listed in [Camera menu](#camera-menu) |
 | **Half-press** | Closes the current panel | the applied look **stays** after closing |
 
@@ -212,6 +212,34 @@ Upstream NX-KS capability.
 | Limits | Pure memory operations — **power cycle restores stock** (boot-persistent needs an image patch). Colour is trustworthy in sRGB; AdobeRGB only guarantees "it applies" |
 | Load sequence | ⛔ Writing `+0x00C` yourself requires all 8 steps: `OnOff` → clear/set Acc → address → Cfg channel bits → bit8 pulse → **reset Acc at the end**, plus waiting for the preview frame to end. Address + pulse alone corrupts the picture — that is the real reason behind the 10-08 "no-go" note |
 
+### Two input domains: standard ⇄ V-Log
+
+The LUT panel has exactly two tabs: `● LUT` and `FILMLAB`. V-Log tables do **not** get a third
+tab — they write the same A18 slot as normal tables; only the input domain the table was built
+for differs.
+
+| Where you are | What tapping the LUT tab does |
+|---|---|
+| FilmLab layer | Returns to the LUT layer (domain unchanged) |
+| **Already on the LUT layer** | **Flips the domain: standard ⇄ V-Log**; the tab becomes `● LUT·VLOG` |
+
+Flipping only reloads one list (`/tmp/nxui-look-vlog.rec`) — no A18 write, no DMA — and each
+domain remembers its own selection. Two directories:
+
+| Domain | Directory | Table input domain |
+|---|---|---|
+| Standard | `looks/` | display-referred (camera JPEG) — usable anytime |
+| V-Log | `looks/_vlog/` | V-Log encoded — **correct only while V-Log gamma is active** |
+
+> The V-Log curve engine lives in `$D/gamma/` on the body and is not bundled. Without it,
+> selecting a V-Log table is a double mismatch (the table assumes dark log footage, the camera
+> feeds it normal JPEG) ⇒ under-exposed and washed out. Use the standard domain instead.
+>
+> How to bake third-party V-Log creative tables (Lumix V-Log LUTs etc.) into standard-domain
+> tables: see
+> [`docs/current/LUMIX_VLOG_IMPORT_2026-11-20.md`](docs/current/LUMIX_VLOG_IMPORT_2026-11-20.md).
+> **Names are capped at 12 characters** — the row is 5 × 133 px and clips from the 13th.
+
 ### Library and blending
 
 | Capability | Command |
@@ -379,3 +407,16 @@ verification, none is "should work".
 - Factory LUT tables are **all stylistic** — "writing identity gives neutral" is not a valid test.
 
 > The film-simulation engine and `.cube` assets live in [nx500-filmsim](https://github.com/WApaperplane/nx500-filmsim) (public).
+
+## Credits
+
+- **[NoireSchwarz/NX500_SRW_reprocessing_6.5K-oversampling](https://github.com/NoireSchwarz/NX500_SRW_reprocessing_6.5K-oversampling)**
+  — research and fitting of the Panasonic V-Log ⇄ Standard curves. Without that curve, V-Log
+  creative tables would be nothing but double-mismatched grey on the NX500, and the baking
+  pipeline in 1.15.7 would not exist.
+- **[changyun233/Lumix-V-log-LUTs](https://github.com/changyun233/Lumix-V-log-LUTs)**
+  — curation and previews of 107 V-Log creative tables (Booz / Changyun / Hamburger / Lucas Hu /
+  Lumix Color Lab / VariCam official). These tables are **not bundled**; get them from the
+  original link.
+- **[ottokiksmaler/nx500_nx1_modding](https://github.com/ottokiksmaler/nx500_nx1_modding)**
+  — upstream bloodline.
