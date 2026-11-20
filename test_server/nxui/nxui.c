@@ -136,6 +136,12 @@ static char output[4096], status[384] = "选择配方以预览 · 保存后保�
  * 盖住，等于没有反馈。 */
 static char banner[256];
 static long long banner_until, banner_check;
+/* 多行对话框：/tmp/nxui-dialog 整个文件当正文（一行一条，最多 8 行），
+ * 不再自动消失 —— 原版 popup 一条条弹、每条 3 秒自己关，看四行版本信息要等
+ * 12 秒还记不住。这里一次显示完，右下角一个「关闭」，点它或按任意退出键才收。 */
+static char dialog[1024];
+static int dialog_on;
+static struct nk_rect dialog_close;   /* 由绘制写入，点击时判命中 */
 static char menu_path[NXUI_PATH];
 static char pending_menu[NXUI_PATH];
 static volatile sig_atomic_t interrupted;
@@ -227,7 +233,7 @@ static int checked(const char *name) {
 static void resize_panel(void) {
     /* 208 not 192：新增 14px 横向滚动条 + 5px 行距后，192 会把按钮行挤出
      * 面板底部（Nuklear 直接丢弃后续行，表现为按钮整行不渲染）。 */
-    height = menu ? 336 : 208;
+    height = menu ? 292 : 208;
     if (height > DisplayHeight(display, screen)) height = DisplayHeight(display, screen);
     XMoveResizeWindow(display, window, (DisplayWidth(display, screen)-width)/2,
         DisplayHeight(display, screen)-height, (unsigned)width, (unsigned)height);
@@ -838,6 +844,8 @@ static void bump_strength(int delta) {
 /* 按键/触摸的语义分发：把「哪个键」和「做什么」解耦，键位表才好换。 */
 static void do_action(int act) {
     if (act == ACT_NONE) return;
+    /* 对话框是模态：任何退出类按键先把它收掉，不让按键穿到底下 */
+    if (dialog_on) { dialog_on = 0; dirty = 1; return; }
     if (act == ACT_CLOSE) { queue.close_requested = 1; return; }
     /* 换层键在菜单页也认：菜单 → 进 LUT 层（入口语义不变，只是少按一次）。
      * 它必须在 `if (menu) return` 之前 —— 否则在菜单页按 WiFi 什么都不会发生。 */
@@ -1053,15 +1061,22 @@ static void draw(void) {
         if (menu) {
             /* 菜单页：EV+WiFi 打开的第一层。右上角那个「滤镜」是回到上次
              * 所在滤镜层的快捷方式，不是第二个入口 —— 两个页签在滤镜页里。 */
-            nk_layout_row_begin(ctx, NK_STATIC, 24, 3);
-            nk_layout_row_push(ctx, 460);
+            nk_layout_row_begin(ctx, NK_STATIC, 24, 4);
+            nk_layout_row_push(ctx, 300);
             nk_label_colored(ctx, "NX-KS  /  菜单", NK_TEXT_LEFT, accent);
-            nk_layout_row_push(ctx, 104);
+            nk_layout_row_push(ctx, 96);
+            /* 「返回 / 取消」常驻顶栏 —— 原来它们是菜单文件里的最后两项，
+             * 排在末页，翻两页才够得着（用户明确否掉这一点）。 */
+            if (nk_button_label(ctx, "返回")) {
+                if (!strstr(menu_path, "gui_ini.NX500") && load_menu("gui_ini.NX500")) dirty = 1;
+                else queue.close_requested = 1;
+            }
+            nk_layout_row_push(ctx, 96);
             if (nk_button_label(ctx, "滤镜")) {
                 snprintf(return_menu, sizeof return_menu, "%s", menu_path);
                 menu = 0; resize_panel();
             }
-            nk_layout_row_push(ctx, 104);
+            nk_layout_row_push(ctx, 96);
             if (nk_button_label(ctx, "关闭")) queue.close_requested = 1;
             nk_layout_row_end(ctx);
         } else {
@@ -1092,9 +1107,9 @@ static void draw(void) {
             nk_layout_row_end(ctx);
         }
         if (menu) {
-            start = page * 6;
-            nk_layout_row_dynamic(ctx, 55, 2);
-            for (i = start; i < start + 6; i++) {
+            start = page * 12;
+            nk_layout_row_dynamic(ctx, 40, 3);
+            for (i = start; i < start + 12; i++) {
                 if (i >= item_count) { nk_label(ctx, "", NK_TEXT_LEFT); continue; }
                 if (!strcmp(base_name(items[i].command), "telnet_toggle.sh"))
                     nx_services_label(&services, line, sizeof line);
@@ -1102,10 +1117,10 @@ static void draw(void) {
                 if (nk_button_label(ctx, line)) { activate_item(i); break; }
             }
             nk_layout_row_dynamic(ctx, 32, 3);
-            if (nk_button_label(ctx, "上一页")) { page = page > 0 ? page - 1 : (item_count-1)/6; dirty = 1; }
-            snprintf(line, sizeof line, "%d / %d", page + 1, (item_count+5)/6);
+            if (nk_button_label(ctx, "上一页")) { page = page > 0 ? page - 1 : (item_count-1)/12; dirty = 1; }
+            snprintf(line, sizeof line, "%d / %d", page + 1, (item_count+11)/12);
             nk_label(ctx, line, NK_TEXT_CENTERED);
-            if (nk_button_label(ctx, "下一页")) { page = (page+1) % ((item_count+5)/6); dirty = 1; }
+            if (nk_button_label(ctx, "下一页")) { page = (page+1) % ((item_count+11)/12); dirty = 1; }
         } else if (count > 0) {
             int gi, win = 5, first, idx;
             /* 60px：面板 208px 高，标题/滤镜条/状态行/滚动条/按钮行/底部状态
@@ -1288,6 +1303,53 @@ static void draw(void) {
             nk_draw_text(cb, nk_rect(r.x + 24, r.y + (bh - f->height) / 2 + 2, tw, f->height),
                          banner, (int)strlen(banner), f, nk_rgba(0, 0, 0, 0),
                          nk_rgb(232, 238, 226));
+        }
+        if (dialog_on) {
+            const struct nk_user_font *f = ctx->style.font;
+            struct nk_command_buffer *cb = nk_window_get_canvas(ctx);
+            const char *lines[8];
+            int nlines = 0, k = 0;
+            const char *p2 = dialog;
+            float maxw = 0;
+            while (*p2 && nlines < 8) {
+                const char *nl = strchr(p2, '\n');
+                size_t len = nl ? (size_t)(nl - p2) : strlen(p2);
+                float w = f->width(f->userdata, f->height, p2, (int)len);
+                if (w > maxw) maxw = w;
+                lines[nlines++] = p2;
+                if (!nl) break;
+                p2 = nl + 1;
+            }
+            {
+                float bw = maxw + 56, bh = (float)nlines * 24 + 74;
+                struct nk_rect r, btn;
+                if (bw > width - 32) bw = width - 32;
+                if (bh > height - 16) bh = height - 16;
+                r = nk_rect((width - bw) / 2, (height - bh) / 2, bw, bh);
+                nk_fill_rect(cb, r, 8, nk_rgba(16, 20, 24, 246));
+                nk_stroke_rect(cb, r, 8, 1.5f, accent);
+                for (k = 0; k < nlines; k++) {
+                    const char *nl = strchr(lines[k], '\n');
+                    int len = nl ? (int)(nl - lines[k]) : (int)strlen(lines[k]);
+                    float w = f->width(f->userdata, f->height, lines[k], len);
+                    float x = r.x + (bw - w) / 2;
+                    float y = r.y + 18 + k * 24;
+                    if (x < r.x + 12) x = r.x + 12;
+                    if (w > bw - 24) len = (int)((bw - 24) / (f->height * 0.62f)); /* 粗略截断 */
+                    nk_draw_text(cb, nk_rect(x, y, w, f->height), lines[k], len, f,
+                                 nk_rgba(0, 0, 0, 0), nk_rgb(226, 233, 220));
+                }
+                btn = nk_rect(r.x + bw - 108, r.y + bh - 44, 92, 30);
+                nk_fill_rect(cb, btn, 6, nk_rgba(38, 46, 40, 255));
+                nk_stroke_rect(cb, btn, 6, 1.0f, accent);
+                {
+                    static const char lbl[] = "关闭";
+                    float lw = f->width(f->userdata, f->height, lbl, 6);
+                    nk_draw_text(cb, nk_rect(btn.x + (btn.w - lw) / 2, btn.y + (btn.h - f->height) / 2 + 2, lw, f->height),
+                                 lbl, 6, f, nk_rgba(0, 0, 0, 0), accent);
+                }
+                dialog_close = btn;
+            }
         }
     }
     nk_end(ctx);
@@ -1769,6 +1831,16 @@ int main(int argc, char **argv) {
                          event.xbutton.button, event.xbutton.x, event.xbutton.y);
                 logline(b);
             }
+            /* 对话框（多行提示）命中：只有「关闭」那一块收它，别处的点击
+             * 也不该穿到面板下面的按钮上 —— 挡住了就当模态。 */
+            if (dialog_on && event.type == ButtonPress) {
+                float mx = (float)event.xbutton.x, my = (float)event.xbutton.y;
+                if (mx >= dialog_close.x && mx <= dialog_close.x + dialog_close.w &&
+                    my >= dialog_close.y && my <= dialog_close.y + dialog_close.h) {
+                    dialog_on = 0; dirty = 1;
+                }
+                continue;
+            }
             if (event.type == ButtonPress && !menu && (event.xbutton.button == 4 || event.xbutton.button == 5))
                 choose(selected + (event.xbutton.button == 4 ? -1 : 1));
             /* Touchscreens can send a tap without a preceding MotionNotify. */
@@ -1858,6 +1930,16 @@ int main(int argc, char **argv) {
                     unlink("/tmp/nxui-banner");
                 }
                 if (banner[0] && now > banner_until) { banner[0] = 0; dirty = 1; }
+                /* 多行对话框：整份文件读进来，关掉之前一直显示 */
+                if ((bf = fopen("/tmp/nxui-dialog", "r")) != NULL) {
+                    size_t got = fread(dialog, 1, sizeof dialog - 1, bf);
+                    dialog[got] = 0;
+                    /* 去掉首尾空行：脚本用 heredoc 写，末尾常带换行 */
+                    while (got && (dialog[got - 1] == '\n' || dialog[got - 1] == '\r')) dialog[--got] = 0;
+                    if (got) { dialog_on = 1; dirty = 1; fprintf(stderr, "DIALOG %u bytes\n", (unsigned)got); }
+                    fclose(bf);
+                    unlink("/tmp/nxui-dialog");
+                }
             }
         }
         refresh_services(0);

@@ -103,6 +103,10 @@ int nx_load_menu(const char *path, struct nx_item *out, int max) {
         if (!command || n >= max) goto bad;
         *command++ = 0;
         if (strlen(label) >= sizeof out[n].label || strlen(command) >= sizeof out[n].command) goto bad;
+        /* 「返回 / 取消」不再进网格：它们排在末页，翻到最后才够得着。
+         * 顶栏已经常驻「返回 / 关闭」，菜单文件保持原样，这里只是不渲染。 */
+        if (!strcmp(command, "/opt/usr/nx-ks/gui_exit.sh") ||
+            !strcmp(command, "@/opt/usr/nx-ks/gui_ini.NX500")) continue;
         out[n].checkbox = check;
         strcpy(out[n].label, label); strcpy(out[n++].command, command);
     }
