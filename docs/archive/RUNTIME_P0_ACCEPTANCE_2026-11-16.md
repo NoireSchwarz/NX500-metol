@@ -1,13 +1,13 @@
 # P0 验收规格：录像并发门控 / 成片完整性 / 收尾状态机（2026-11-16）
 
 > 状态：**源码侧已核，实机未执行**。本文件只定义"怎么算通过"，不含任何未经测量的延迟承诺。
-> 上位文档：[RUNTIME_ARCHITECTURE_DESIGN_2026-11-16.md](RUNTIME_ARCHITECTURE_DESIGN_2026-11-16.md) §实施顺序与验收。
+> 上位文档：[RUNTIME_ARCHITECTURE_DESIGN_2026-11-16.md](RUNTIME_ARCH_AND_P0_2026-11-16.md) §实施顺序与验收。
 
 ## 0. 对路线草案的四处修正
 
 | 草案写法 | 修正 | 依据 |
 |---|---|---|
-| `SAM_0334` 是"仅开 watch"，前 5 帧原厂表 | **两段 watcher 全程关闭**（`VIDEO off`）。唯一变量是 23 项档位表是否重定向 | [VIDEO_LUT_FIRSTFRAME:70](VIDEO_LUT_FIRSTFRAME_2026-11-07.md) 表头"watcher 全程关闭，变量干净" |
+| `SAM_0334` 是"仅开 watch"，前 5 帧原厂表 | **两段 watcher 全程关闭**（`VIDEO off`）。唯一变量是 23 项档位表是否重定向 | [VIDEO_LUT_FIRSTFRAME:70](VIDEO_LUT_AND_10BIT_2026-11-07.md) 表头"watcher 全程关闭，变量干净" |
 | 通过条件含"`MemFree + Cached` 持续不低于 40 MiB" | **40 MiB 是冷转码启动前的准入线，不是持续下限**。转码本身会把 MemFree 压到 ~8 MB（靠回收 page cache），持续下限在物理上不可能成立 | [thumb-cache.sh:97](../../scripts/nx-rc/thumb/thumb-cache.sh) `-ge 40960`；同处注释 "peaks at ~31 MiB RSS" |
 | "四态判定"直接进验收 | 只有 `tc.sh` 单次 FD 扫描（判当时有无可写 MP4），**没有停录边界证据**。四态要按时间线实测后才算定义完成 | [tc.sh:104](../../scripts/tc.sh) `ls -l /proc/$pid/fd` + `grep 'l-w.*DCIM/.*\.mp4'` |
 | 恢复章节按设计描述（版本目录切换、就绪回滚） | **现状不是这样**：相册更新是逐文件 `cp -f`；`tc.sh` 只在 `NEEDS_RESTORE=1` 时恢复；`lut.sh off` 对指针表恢复失败 `\|\| true` 静默放过；`begin` 调 `off` 后**不检查退出码**继续备份 | [update_nxrc.sh:37](../../scripts/update_nxrc.sh) · [tc.sh:87](../../scripts/tc.sh) · [lut.sh:695](../../scripts/lut.sh) · [lut.sh:570](../../scripts/lut.sh) |

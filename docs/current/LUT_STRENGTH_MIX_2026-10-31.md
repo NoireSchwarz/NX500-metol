@@ -1,6 +1,6 @@
 # LUT 强度混合：数学、落地与三个必须先定的语义（2026-10-31）
 
-> 承接 [`DUAL_LUT_FEASIBILITY`](DUAL_LUT_FEASIBILITY_2026-10-31.md)。上一轮证明"两张表串联"不存在；
+> 承接 [`DUAL_LUT_FEASIBILITY`](DUAL_LUT_AND_MIX_2026-10-31.md)。上一轮证明"两张表串联"不存在；
 > 这一轮回答**"同一张表的强度"能不能做、怎么做、代价多少**。
 > 全程离线（读现有 native 表 + numpy 渲染），未连接相机。
 

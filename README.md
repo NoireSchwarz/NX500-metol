@@ -277,7 +277,7 @@ sh /opt/usr/nx-ks/lut.sh prune           # 把旧批次移到 looks/_trash/（�
 
 双表强度的语义是**归一加权**：`r = B/(A+B)` 定比例，`s = min(A+B, 100)` 定总强度，
 最终 `T = 原厂 + s·(mix(A,B,r) − 原厂)`。所以两个都推满时得到两张表的折中，不会溢出成死黑死白。
-实测对比见 [`docs/current/DUAL_STRENGTH_2026-11-02.md`](docs/current/DUAL_STRENGTH_2026-11-02.md)。
+实测对比见 [`docs/current/DUAL_LUT_AND_MIX_2026-10-31.md`](docs/current/DUAL_LUT_AND_MIX_2026-10-31.md)。
 
 ### LUT 面板按键（NX500 实体键，全部实测）
 
@@ -391,7 +391,7 @@ sh /opt/usr/nx-ks/vlog.sh gate      # 放行检查，明细在 /tmp/nx-p0/vlog-g
 - [`docs/current/NXUI_ENABLE_GATE_2026-11-10.md`](docs/current/NXUI_ENABLE_GATE_2026-11-10.md) — 「UI 出不来」的门禁根因与 diag
 - [`docs/current/UI_LUT_SCOPE_2026-11-20.md`](docs/current/UI_LUT_SCOPE_2026-11-20.md) — LUT 两个输入域：页签二次点击换域、队列序号作废、编辑态边界
 - [`docs/current/LUMIX_VLOG_IMPORT_2026-11-20.md`](docs/current/LUMIX_VLOG_IMPORT_2026-11-20.md) — 第三方 V-Log 表怎么烘成标准域可用的表（S2V 复合、去重、命名上限）
-- [`docs/current/VIDEO_LUT_FIRSTFRAME_2026-11-07.md`](docs/current/VIDEO_LUT_FIRSTFRAME_2026-11-07.md) — 录像首帧带表：p7 档位指针表
+- [`docs/current/VIDEO_LUT_AND_10BIT_2026-11-07.md`](docs/current/VIDEO_LUT_AND_10BIT_2026-11-07.md) — 录像首帧带表：p7 档位指针表
 - [`fw/v1.12/a2/README-A2.md`](fw/v1.12/a2/README-A2.md) — A2 p7 补丁刷入教程
 - [`docs/current/RE_PROGRESS_2026-10-08.md`](docs/current/RE_PROGRESS_2026-10-08.md) — 逆向进度总览（含死路清单）
 

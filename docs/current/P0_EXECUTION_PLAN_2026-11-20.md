@@ -1,6 +1,6 @@
 # P0 实机执行清单（2026-11-20）
 
-> 配套 [RUNTIME_P0_ACCEPTANCE_2026-11-16.md](RUNTIME_P0_ACCEPTANCE_2026-11-16.md)。那份定义「怎么算通过」，本文只回答「按什么顺序、敲什么、什么时候必须停」。
+> 配套 [RUNTIME_P0_ACCEPTANCE_2026-11-16.md](RUNTIME_ARCH_AND_P0_2026-11-16.md)。那份定义「怎么算通过」，本文只回答「按什么顺序、敲什么、什么时候必须停」。
 > 所有命令都在 PC 上通过 `tools/nx-ssh.sh` 下发；相机侧一律用 `/opt/usr/nx-ks/busybox` 绝对路径。
 > 状态：**两个观测脚本已改写并在 PC 上通过模拟验证；A/B/C 三轮尚未执行。**
 >

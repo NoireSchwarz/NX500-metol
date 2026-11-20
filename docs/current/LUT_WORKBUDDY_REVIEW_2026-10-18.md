@@ -24,7 +24,7 @@
 | 当前`lut.sh` | `apply`/`off`均不再调用裸寄存器`reload`；`apply`提示半按一次。 |
 | EV_MOBILE入口 | 当前源码只打开LUT UI，原先telnet/FTP启动段已移除；分享和部分文档中“保留服务启动”的旧描述已过时。 |
 
-照片：[SAM_0044.JPG](../../raw8/gates/lut/regtab_2026-10-18/photos/SAM_0044.JPG)。机制记录：[运行态换表闭环](LUT_RETARGET_LIVE_2026-10-18.md)；转换记录：[cube2lut](CUBE2LUT_2026-10-18.md)。
+照片：[SAM_0044.JPG](../../raw8/gates/lut/regtab_2026-10-18/photos/SAM_0044.JPG)。机制记录：[运行态换表闭环](LUT_RETARGET_LIVE_2026-10-18.md)；转换记录：[cube2lut](CUBE2LUT_CONVERTER_2026-10-25.md)。
 
 ## 3. 主动reload的证据应怎样表述
 

@@ -1,7 +1,7 @@
 # 3D LUT .cube 导入工具（`nx3dlut.py`）
 
 > 更新：2026-10-08 · 工具：`test_server/isp/nx3dlut.py`（约 720 行，纯标准库）
-> 依据：表格式来自 [`3DLUT_TABLE_FORMAT_2026-10-08.md`](3DLUT_TABLE_FORMAT_2026-10-08.md)（已多表自证）
+> 依据：表格式来自 [`3DLUT_TABLE_FORMAT_2026-10-08.md`](3DLUT_PATHS_FORMAT_ISOLATION_2026-10-08.md)（已多表自证）
 > 纪律：**只产文件，不碰相机**。`patch` 产物一律视同 `DO-NOT-FLASH`，除非另行验收。
 
 ---
