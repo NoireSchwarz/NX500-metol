@@ -39,7 +39,7 @@ docs/
 | [`RUNTIME_ARCHITECTURE_DESIGN_2026-11-16.md`](current/RUNTIME_ARCH_AND_P0_2026-11-16.md) · [`RUNTIME_P0_ACCEPTANCE_2026-11-16.md`](current/RUNTIME_ARCH_AND_P0_2026-11-16.md) · [`KERNEL_PRIVATE_DEVICES_2026-11-16.md`](current/KERNEL_PRIVATE_DEVICES_2026-11-16.md) | ★★★★ 运行态架构与 P0 验收；内核私有设备清单（勿碰项） |
 | [`FILMLAB_SLOT_AND_BITRATE_2026-11-14.md`](current/FILMLAB_SLOT_AND_BITRATE_2026-11-14.md) | ★★★★ FilmLab 槽位与码率 |
 | [`NX1_NX500_MEMORY_2026-11-10.md`](current/NX1_NX500_MEMORY_2026-11-10.md) · [`EXT_REVIEW_NX500_SRW_2026-11-10.md`](current/EXT_REVIEW_NX500_SRW_2026-11-10.md) · [`NXUI_ENABLE_GATE_2026-11-10.md`](current/NXUI_ENABLE_GATE_2026-11-10.md) | ★★★ NX1/NX500 内存对照；外部 6.5K 超采方案复核（**研究态，不合入**）；NXUI 启用门 |
-| [`AF_ADDRESS_MAP_2026-11-17.md`](current/AF_ADDRESS_MAP_2026-11-17.md) · [`AF_AE_COUPLING_2026-11-17.md`](current/AF_AE_COUPLING_2026-11-17.md) · [`AF_LOWLIGHT_CHAIN_2026-11-17.md`](current/AF_LOWLIGHT_CHAIN_2026-11-17.md) · [`AF_MOTION_LEVERS_2026-11-17.md`](current/AF_MOTION_LEVERS_2026-11-17.md) · [`AF_MOTION_PATCH_2026-11-17.md`](current/AF_MOTION_PATCH_2026-11-17.md) · [`AF_SLOWAF_TRIGGER_2026-11-17.md`](current/AF_SLOWAF_TRIGGER_2026-11-17.md) | ★★★ AF/曲线二期：地址图、AE 耦合、低光链、运动杠杆与补丁、慢 AF 触发 |
+| [`AF_ADDRESS_AND_AE_2026-11-17.md`](current/AF_ADDRESS_AND_AE_2026-11-17.md) · [`AF_MOTION_AND_LOWLIGHT_2026-11-17.md`](current/AF_MOTION_AND_LOWLIGHT_2026-11-17.md) · [`AF_TRIGGER_AND_PATCH_2026-11-17.md`](current/AF_TRIGGER_AND_PATCH_2026-11-17.md) | ★★★★ **AF 二期（6 → 3 份）**：地址体系与 AE 耦合（LV+ISO 只调滤波器，不改相位许可）／低光·预测阶数·主脸打分／SLOW-AF 触发与 `ng/ok/small` 三初值 |
 | [`CURVE_CALLLINK_2026-11-17.md`](current/CURVE_ANATOMY_2026-11-17.md) · [`CURVE_DDR_LAYOUT_2026-11-17.md`](current/CURVE_ANATOMY_2026-11-17.md) · [`CURVE_INTERP_2026-11-17.md`](current/CURVE_ANATOMY_2026-11-17.md) | ★★★ 曲线调用链、DDR 布局、插值 |
 | [`LUT_INSTANT_SWITCH_2026-11-08.md`](current/LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md) · [`TC_CURVE_ONDEVICE_2026-11-08.md`](current/TC_CURVE_AND_RESTORE_2026-11-08.md) · [`TC_RESTORATION_WORKFLOW_2026-11-08.md`](current/TC_CURVE_AND_RESTORE_2026-11-08.md) | ★★★ 瞬间换表；TC 曲线 19 节点表（**菜单入口已移除，`tc.sh` 留机备份**，见 `ce00885`） |
 
@@ -64,7 +64,7 @@ docs/
 | [`LUT_WEB_SOURCE_2026-10-25.md`](current/LUT_LIBRARY_2026-10-25.md) · [`LUT_PHYSICAL_FILM_2026-10-25.md`](current/LUT_LIBRARY_2026-10-25.md) | 外部 CLUT 导入的解码坑；物理胶片配方线 |
 | [`LUT_AUDIT_2026-10-25.md`](current/LUT_LIBRARY_2026-10-25.md) · [`LUT_STYLE_AUDIT_V2_2026-10-25.md`](current/LUT_LIBRARY_2026-10-25.md) · [`LUT_DEDUP_AND_GAPFILL_2026-10-25.md`](current/LUT_LIBRARY_2026-10-25.md) · [`LUT_BRAND_LOOKS_2026-10-25.md`](current/LUT_LIBRARY_2026-10-25.md) | 库体检、风格复核、去重补隙、品牌色 |
 | [`LUT_CRCBY_ONDEVICE_FIX_2026-10-25.md`](current/LUT_FORMAT_AND_INPUT_2026-10-19_to_11-07.md) · [`LUT_COLORSPACE_REGRESSION_REVIEW_2026-10-25.md`](current/LUT_FORMAT_AND_INPUT_2026-10-19_to_11-07.md) · [`COLOR_DEF_2026-10-25.md`](current/COLOR_DEF_2026-10-25.md) | CrCbY 机内修正、色彩回归复核、`colordef` 常量 |
-| [`NX500_AF_STATIC_ROUND9_2026-10-31.md`](current/NX500_AF_STATIC_ROUND9_2026-10-31.md) | AF 静态分析第九轮（前八轮见同名前缀，`ROUND2..8`） |
+| [`NX500_AF_STATIC_OVERVIEW_2026-10-31.md`](current/NX500_AF_STATIC_OVERVIEW_2026-10-31.md) | ★★★★★ **AF 静态分析九轮总纲（9 → 1 份）**：两套命名空间不可混（`0xNNNNN`=CAFData / 槽位=CIQ_SysDataIF）、主体保持已有实现、眼部 AF 是纯缺口、逐偏移扫描对 `SetParameter` 无效 |
 
 ### 2.1 LUT：运行态换表（★ 当前主线）
 
@@ -134,7 +134,7 @@ docs/
 | [`CAMERA_MENU_ARCHITECTURE_2026-10-07.md`](current/CAMERA_MENU_ARCHITECTURE_2026-10-07.md) | ★★★★★ 菜单渲染档案 + **证明 p7 无 UI** |
 | [`DICAM_PATCH_INSTALL_PATHS_2026-10-12.md`](current/DICAM_PATCH_INSTALL_PATHS_2026-10-12.md) | App 补丁安装路径与 Release 布局 |
 | [`SHELL_TO_APP_ISOMORPHISM_2026-10-12.md`](current/SHELL_TO_APP_ISOMORPHISM_2026-10-12.md) | shell → App 官方通道替换 |
-| [`UI_R1A_PW_DATAFLOW_2026-10-15.md`](current/UI_R1A_PW_DATAFLOW_2026-10-15.md) · [`R1B`](current/UI_R1B_MENU_ABI_2026-10-15.md) · [`R1C`](current/UI_R1C_APPLY_TRANSACTION_2026-10-15.md) | PW 菜单数据流 / 记录 ABI / 应用事务 |
+| [`UI_MENU_AND_PW_ABI_2026-10-15.md`](current/UI_MENU_AND_PW_ABI_2026-10-15.md) | ★★★★ **原生菜单与 PW 面板（4 → 1 份）**：0x114 记录 ABI（无计数/哨兵）、7 维值项 id（R/G/B 0..199）、调节与应用是两条独立事务、`.mo` 文案未决 |
 | [`UI_R0_TARGET_INVENTORY_2026-10-15.md`](current/UI_R0_TARGET_INVENTORY_2026-10-15.md) | 原版 App 样本与哈希台账 |
 
 ### 3.4 方法与纪律
@@ -265,8 +265,7 @@ docs/
 
 `current/` 162 → **144** 份，`archive/` 69 → **99**。合并后全库相对链接 **0 断链**。
 
-> 下一批候选（体积较大，未做）：`NX500_AF_STATIC_ROUND2..9`（9 轮递进，可并为一份约 1750 行的全轮记录）、
-> `AF_*_2026-11-17` 6 份（2631 行）、`UI_R1*` 4 份。
+> 三组较大的已在 §6.6 处理（AF 九轮、AF 二期、UI_R1）。
 
 ### 6.5 LUT 28 份按机制归组（→ 5 份，带演进叙事）
 
@@ -282,3 +281,25 @@ docs/
 | `LUT_PIPELINE_ROADMAP_2026-10-09_to_11-01` | 3 | **管线**：三路径设计 → 复核 → 「转换与铺设已全在机内」 |
 
 `current/` 144 → **121** 份，`archive/` 99 → **127**。合并后全库相对链接 **0 断链**。
+
+### 6.6 三组大块：重写正文 + 原文归档（19 份 → 5 份）
+
+这三组体积大（1754 / 2631 / 739 行），逐段拼接会得到 2000 行以上的文件。改用**重写**：
+正文只留判定、地址、判据与边界，过程推理归原文；原文整份归档，不并入。
+
+| 新文档 | 由哪些组成 | 行数 |
+|---|---|---|
+| `NX500_AF_STATIC_OVERVIEW_2026-10-31` | 九轮（基线 + ROUND2..9） | 1754 → 130 |
+| `AF_ADDRESS_AND_AE_2026-11-17` | 地址图 + AE 耦合 | 529 → 150 |
+| `AF_MOTION_AND_LOWLIGHT_2026-11-17` | 低光链 + 运动杠杆 | 1210 → 180 |
+| `AF_TRIGGER_AND_PATCH_2026-11-17` | 慢 AF 触发 + 补丁落点 | 892 → 130 |
+| `UI_MENU_AND_PW_ABI_2026-10-15` | R1A/R1B/R1C/R1_SUPPLEMENT | 739 → 175 |
+
+三条被这次重组凸显出来的判定：
+
+1. **AF 有两套命名空间**：`0xNNNNN` 属 `CAFData`（330 条），槽位属 `CIQ_SysDataIF_NX1`（184 槽）；
+   用错表会得到"自洽但错位"的名字。
+2. **主体保持已有、眼部 AF 是缺口**：前者只需调策略，后者要新增两段代码。
+3. **低照度不改相位门控**：AE 影响 AF 的唯一正式路径是 LV+ISO → 滤波器（`0x20002/0x20004/0x20007/0x2000C`）。
+
+`current/` 121 → **107** 份，`archive/` 127 → **146**。

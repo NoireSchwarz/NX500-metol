@@ -86,5 +86,5 @@ QEMU用于转换、数据协议、真字节补丁分支和可模拟启动流程�
 - [LUT重启方案](LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md)：保留资产与候选路线；本文修正其历史实验口径，并重新确定路线定位。
 - [U6实机结果](U6_ONMACHINE_RESULT_2026-10-09.md)：E1/E3成果、E4负结果及identity判据修订。
 - [LUT应用路径](3DLUT_PATHS_FORMAT_ISOLATION_2026-10-08.md)与[表格式](3DLUT_PATHS_FORMAT_ISOLATION_2026-10-08.md)：路径和格式起点，旧命名须结合后续实证。
-- [原生UI规划（已归档）](../archive/NATIVE_UI_ROADMAP_2026-10-15.md)、[菜单链补证](UI_R1_SUPPLEMENT_MENU_CHAIN_2026-10-15.md)、[M2文案设计](M2_RECIPE_NAME_DESIGN_2026-10-16.md)。
+- [原生UI规划（已归档）](../archive/NATIVE_UI_ROADMAP_2026-10-15.md)、[菜单链补证](UI_MENU_AND_PW_ABI_2026-10-15.md)、[M2文案设计](M2_RECIPE_NAME_DESIGN_2026-10-16.md)。
 - [扫描器](../../test_server/lutpipe/lut_slot_scan.py)、[转换器](../../test_server/isp/nx3dlut.py)、[选择器](../../test_server/lutpipe/lutpick.sh)：现有实现与待修正语义。
