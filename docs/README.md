@@ -26,9 +26,24 @@ docs/
 
 ---
 
-## 2. 现行结论（10-15 ~ 11-07）
+## 2. 现行结论（10-15 ~ 11-20）
 
-### 2.0 最近一轮（10-25 ~ 11-07）★ 先看这一组
+### 2.0 最新一轮（11-08 ~ 11-20）★ 先看这一组
+
+| 文档 | 定位 |
+|---|---|
+| [`P0_EXECUTION_PLAN_2026-11-20.md`](current/P0_EXECUTION_PLAN_2026-11-20.md) | ★★★★★ **录像并发门控 + 成片完整性 + 收尾状态机**：唯一的「毁数据 / 拔电池」风险面；PC 侧 19/19、真机两轮守卫 253/253 |
+| [`VLOG_BLACK_SCREEN_2026-11-20.md`](current/VLOG_BLACK_SCREEN_2026-11-20.md) · [`UI_SINGLE_ENTRY_2B_2026-11-20.md`](current/UI_SINGLE_ENTRY_2B_2026-11-20.md) · [`DYN24_MAP_2026-11-20.md`](current/DYN24_MAP_2026-11-20.md) | ★★★★ V-Log 录像黑屏根因（DYN24 整表重指 A18）、EV+WiFi 单入口 2b 定案、DYN24 映射 |
+| [`LUMIX_VLOG_IMPORT_2026-11-20.md`](current/LUMIX_VLOG_IMPORT_2026-11-20.md) · [`UI_LUT_SCOPE_2026-11-20.md`](current/UI_LUT_SCOPE_2026-11-20.md) | ★★★ Lumix V-Log 库导入（烘成 Standard 输入）、UI 域范围 |
+| [`WIFI_5GHZ_FINAL_2026-11-20.md`](current/WIFI_5GHZ_FINAL_2026-11-20.md) | ★★★★ **5GHz 线收束**：单点 `dev_cap_mask`、固件 5G 表、FCC 对照、救砖缺 `dnloader.bin`；**决定不发射** |
+| [`RUNTIME_ARCHITECTURE_DESIGN_2026-11-16.md`](current/RUNTIME_ARCHITECTURE_DESIGN_2026-11-16.md) · [`RUNTIME_P0_ACCEPTANCE_2026-11-16.md`](current/RUNTIME_P0_ACCEPTANCE_2026-11-16.md) · [`KERNEL_PRIVATE_DEVICES_2026-11-16.md`](current/KERNEL_PRIVATE_DEVICES_2026-11-16.md) | ★★★★ 运行态架构与 P0 验收；内核私有设备清单（勿碰项） |
+| [`FILMLAB_SLOT_AND_BITRATE_2026-11-14.md`](current/FILMLAB_SLOT_AND_BITRATE_2026-11-14.md) | ★★★★ FilmLab 槽位与码率 |
+| [`NX1_NX500_MEMORY_2026-11-10.md`](current/NX1_NX500_MEMORY_2026-11-10.md) · [`EXT_REVIEW_NX500_SRW_2026-11-10.md`](current/EXT_REVIEW_NX500_SRW_2026-11-10.md) · [`NXUI_ENABLE_GATE_2026-11-10.md`](current/NXUI_ENABLE_GATE_2026-11-10.md) | ★★★ NX1/NX500 内存对照；外部 6.5K 超采方案复核（**研究态，不合入**）；NXUI 启用门 |
+| [`AF_ADDRESS_MAP_2026-11-17.md`](current/AF_ADDRESS_MAP_2026-11-17.md) · [`AF_AE_COUPLING_2026-11-17.md`](current/AF_AE_COUPLING_2026-11-17.md) · [`AF_LOWLIGHT_CHAIN_2026-11-17.md`](current/AF_LOWLIGHT_CHAIN_2026-11-17.md) · [`AF_MOTION_LEVERS_2026-11-17.md`](current/AF_MOTION_LEVERS_2026-11-17.md) · [`AF_MOTION_PATCH_2026-11-17.md`](current/AF_MOTION_PATCH_2026-11-17.md) · [`AF_SLOWAF_TRIGGER_2026-11-17.md`](current/AF_SLOWAF_TRIGGER_2026-11-17.md) | ★★★ AF/曲线二期：地址图、AE 耦合、低光链、运动杠杆与补丁、慢 AF 触发 |
+| [`CURVE_CALLLINK_2026-11-17.md`](current/CURVE_CALLLINK_2026-11-17.md) · [`CURVE_DDR_LAYOUT_2026-11-17.md`](current/CURVE_DDR_LAYOUT_2026-11-17.md) · [`CURVE_INTERP_2026-11-17.md`](current/CURVE_INTERP_2026-11-17.md) | ★★★ 曲线调用链、DDR 布局、插值 |
+| [`LUT_INSTANT_SWITCH_2026-11-08.md`](current/LUT_INSTANT_SWITCH_2026-11-08.md) · [`TC_CURVE_ONDEVICE_2026-11-08.md`](current/TC_CURVE_ONDEVICE_2026-11-08.md) · [`TC_RESTORATION_WORKFLOW_2026-11-08.md`](current/TC_RESTORATION_WORKFLOW_2026-11-08.md) | ★★★ 瞬间换表；TC 曲线 19 节点表（**菜单入口已移除，`tc.sh` 留机备份**，见 `ce00885`） |
+
+### 2.0b 上一轮（10-25 ~ 11-07）
 
 | 文档 | 定位 |
 |---|---|
@@ -156,6 +171,10 @@ docs/
 | **原生 UI（EFL）** 是方向 | ⛔ 全屏自绘实测是墙；小面板（NXUI）可行 | `UI_FRAMEWORK_ALTERNATIVES_2026-10-17` |
 | 改 unit / 依赖可开机重读 | ⛔ 本机是用户态恢复机型，systemd 不重读 unit（P5 死路） | `HANDOVER_2026-10-16` |
 | `setvar` 可写 PW 变量 | ⛔ 禁区：id 运行时注册，盲扫曾写死 capture 服务 | `ERROR_CORRECTIONS_2026-10-07` |
+| **5G 功率表没随机型发布** | ❌ 固件内建完整 5G 表（39 条 × 17 B）；主机侧 `txpwrlimit_cfg.bin` 只是覆盖文件 | `WIFI_5GHZ_FINAL_2026-11-20` |
+| **「四层一致裁剪」**（mask+功率表+FCC+前端） | ❌ 只剩两层：驱动 `dev_cap_mask` + FCC 只报 2.4G | 同上 |
+| **NX30 同腔体 ⇒ 可与 NX500 芯片级类比** | ❌ NX30 是 Atheros AR6003（DRIMeIV），NX500 是 Marvell SD8887（DRIMeVs）；只剩「同腔体装过双频天线」 | 同上 |
+| **`band` 实验能验证射频通路** | ❌ 只证驱动注册；`fw_bands` 已被 mask 卡死，结果几乎确定 | 同上 |
 
 ---
 
@@ -172,3 +191,30 @@ docs/
 - **同步根 README**：3D LUT 一节按 10-18 结论重写（中英双语）。
 
 > 归档文件里的相对链接（指向 `current/` 的）会失效 —— 需要时用文件名在本目录 `current/` 里找。
+
+---
+
+## 6. 第二轮清理（2026-11-20）
+
+审计工具：`tools/doc_audit.py`（索引断链 / 孤儿 / 同主题）、`tools/doc_pathcheck.py`（文档内路径失效）。
+
+| 项 | 结果 |
+|---|---|
+| 索引断链 | **0**（§1~§3 的 81 条链接全部有效） |
+| 10-18 那批横幅 | **24 份全部在位**，无被后续编辑冲掉 |
+| `current/` 规模 | 170 份，其中 **22 份未被索引**（12 份是 11-16~11-20 新增，10 份是 10 月过程记录） |
+| 同主题多版本 | 无（`AF_STATIC_ROUND2..9` 是递进轮次，各有独立结论，不是版本覆盖） |
+| 文档内失效路径 | 44 份文档、98 处（多为已移动的产物路径，不影响结论） |
+
+**处理**：
+
+- **新增 1 份横幅**：`WIFI_5GHZ_ANTENNA_CASE_2026-11-20.md` —— 其中「NX30 同腔体」的芯片级类比已被同日
+  `WIFI_5GHZ_FINAL_2026-11-20.md` 修正（NX30 实为 Atheros AR6003）。
+- **补 §2.0 索引**：11-08 ~ 11-20 共 25 份文档进入现行结论区。
+- **新增 §4 四条作废结论**：5G 功率表「没发布」、四层裁剪、NX30 芯片类比、`band` 能验射频。
+- **未归档任何文档**：本项目「过时」指**结论被取代**，10-18 已定规范为「加横幅而非删除」；
+  10 月那批过程记录在 §2.2 已声明「不作判据来源」，且含死路记录（如 G5-3 的「路径 B 不成立」），
+  仍有取证价值。
+
+> 若将来要压缩 `current/` 体积，安全的候选是 §2.2 已声明的 10-07 ~ 10-14 过程记录，
+> 归档而非删除 —— 但需先确认这些文件未被 `evidence/` 或脚本按路径引用。
