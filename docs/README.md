@@ -20,9 +20,9 @@ docs/
 | 文档 | 定位 |
 |---|---|
 | [`HANDOVER_2026-10-16.md`](current/HANDOVER_2026-10-16.md) | ★★★★★ **总入口**：约定、死路、门控、执行序 |
+| [`P0_EXECUTION_PLAN_2026-11-20.md`](current/P0_EXECUTION_PLAN_2026-11-20.md) | ★★★★★ **当前执行计划**：录像并发门控 + 成片完整性 + 收尾状态机（唯一「毁数据」风险面） |
 | [`ONDEVICE_SOP_2026-10-16.md`](current/ONDEVICE_SOP_2026-10-16.md) | ★★★★★ **上机日 SOP**：就位 / 判据 / 回退 / 证据落点（§10 LUT 部分已被取代，见文首横幅） |
 | [`../README.md`](../README.md) | 对外介绍、安装、功能（★ 用户视角从这里进） |
-| [`TASKFLOW_2026-10-16.md`](current/TASKFLOW_2026-10-16.md) | 任务流与执行记录 |
 
 ---
 
@@ -85,7 +85,7 @@ docs/
 
 | 文档 | 定位 |
 |---|---|
-| [`DELIVERY_RESUME_AUDIT_2026-10-16.md`](current/DELIVERY_RESUME_AUDIT_2026-10-16.md) | P5 投递失败的恢复链审计（LUT 后端部分已退役，P5 分析仍有效） |
+| [`DELIVERY_RESUME_AUDIT_2026-10-16.md`](archive/DELIVERY_RESUME_AUDIT_2026-10-16.md) | P5 投递失败的恢复链审计（LUT 后端部分已退役，P5 分析仍有效） |
 | [`ONDEVICE_NATIVE_LABEL_RESULT_2026-10-16.md`](current/ONDEVICE_NATIVE_LABEL_RESULT_2026-10-16.md) | 原生标签真机 POC（11 字节） |
 | [`T2_PRESET_PROTOCOL_2026-10-16.md`](current/T2_DELIVERY_AND_PRESET_2026-10-16.md) | `nxwa.preset/1` 协议设计（**未实施**） |
 | [`M2_RECIPE_NAME_DESIGN_2026-10-16.md`](current/M2_RECIPE_NAME_DESIGN_2026-10-16.md) | 配方名 `.mo` 文案层设计（**未落地**） |
@@ -135,7 +135,7 @@ docs/
 | [`DICAM_PATCH_INSTALL_PATHS_2026-10-12.md`](current/DICAM_PATCH_INSTALL_PATHS_2026-10-12.md) | App 补丁安装路径与 Release 布局 |
 | [`SHELL_TO_APP_ISOMORPHISM_2026-10-12.md`](current/SHELL_TO_APP_ISOMORPHISM_2026-10-12.md) | shell → App 官方通道替换 |
 | [`UI_MENU_AND_PW_ABI_2026-10-15.md`](current/UI_MENU_AND_PW_ABI_2026-10-15.md) | ★★★★ **原生菜单与 PW 面板（4 → 1 份）**：0x114 记录 ABI（无计数/哨兵）、7 维值项 id（R/G/B 0..199）、调节与应用是两条独立事务、`.mo` 文案未决 |
-| [`UI_R0_TARGET_INVENTORY_2026-10-15.md`](current/UI_R0_TARGET_INVENTORY_2026-10-15.md) | 原版 App 样本与哈希台账 |
+| [`UI_R0_TARGET_INVENTORY_2026-10-15.md`](archive/UI_R0_TARGET_INVENTORY_2026-10-15.md) | 原版 App 样本与哈希台账 |
 
 ### 3.4 方法与纪律
 
@@ -302,4 +302,23 @@ docs/
 2. **主体保持已有、眼部 AF 是缺口**：前者只需调策略，后者要新增两段代码。
 3. **低照度不改相位门控**：AE 影响 AF 的唯一正式路径是 LV+ISO → 滤波器（`0x20002/0x20004/0x20007/0x2000C`）。
 
-`current/` 121 → **107** 份，`archive/` 127 → **146**。
+### 6.7 任务流与进度记录清出 `current/`（7 份）
+
+这类文档的价值在"当时的排期与判断"，不在"现在该怎么做"，且大多已被后续结论覆盖。整份归档，
+`current/` 不再保留流水账；需要复盘某天的顺序时按下表按名去 `archive/` 找。
+
+| 已归档 | 内容 | 为什么清出 |
+|---|---|---|
+| `TASKFLOW_2026-10-16` | 任务流与执行记录 | 排期已过；现行计划看 `P0_EXECUTION_PLAN_2026-11-20` |
+| `HANDOVER_2026-10-15` | 旧交接（带 10-18 横幅） | 已被 `HANDOVER_2026-10-16`（总入口）取代 |
+| `SESSION_SUMMARY_2026-10-15` | 单日会话总结 | 一次性记录 |
+| `NATIVE_UI_LOADING_PROGRESS_2026-10-16` | 原生 UI 加载进度 | 原生 UI（EFL）已被判死，NXUI 取代 |
+| `DELIVERY_RESUME_AUDIT_2026-10-16` | 交付恢复审计 | 一次性状态盘点 |
+| `RE_PROGRESS_2026-10-08` | 逆向总进度表 | 进度快照；结论已分散到各专题文档 |
+| `UI_R0_TARGET_INVENTORY_2026-10-15` | 原版 App 样本与哈希台账 | 台账随样本更新，留在 `evidence/` 更合适 |
+
+保留在 `current/` 的相邻文档：`HANDOVER_2026-10-16`（总入口）、`P0_EXECUTION_PLAN_2026-11-20`（现行计划）、
+`ONDEVICE_SOP_2026-10-16`（上机 SOP）、`PATCH_SURFACE_REVIEW_2026-10-12`（补丁空间方法论）、
+`U6_ONMACHINE_RESULT_2026-10-09`（E4「成片死路」的原始证据，不能删）。
+
+`current/` 107 → **100** 份，`archive/` 146 → **153**。全库相对链接 **0 断链**。

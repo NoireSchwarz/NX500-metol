@@ -132,7 +132,7 @@ poker 的证明面 = 「固定地址 × 预编码数据 × 事后重读的参数
 
 ## 6. 依据与证据入口
 
-- [最新交接（A2 事件 / UI 裁决）](HANDOVER_2026-10-15.md)
+- [最新交接（A2 事件 / UI 裁决）](../archive/HANDOVER_2026-10-15.md)
 - [原生 UI 路线规划（§5 投递候选 / §9 执行包，已归档）](../archive/NATIVE_UI_ROADMAP_2026-10-15.md)
 - [实机报告：restart 卡死 / 时序 / poker 先例](CAMERA_ONLINE_PROBE_2026-10-13.md)
 - [p7/App 决策记录（D-5 T2 / D-6 桩 v2）](MOD_DECISION_P7_APP_2026-10-12.md)

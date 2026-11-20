@@ -6,7 +6,7 @@
 
 > **2026-10-18 离线更新**：后端支持`apply <name> --sel 0|1 [--dry]`（默认1）；picker显式接受`--ch0|--ch1`并拒绝冲突选项。状态从`current.sel`读取请求值，旧记账缺通道时返回null；sel=0拒绝活动守护，不自动启动守护，不宣称成片通过。本轮未部署，详见[LUT0路线复核](LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md)。
 
-> **同日后续修正**：真实shell调用漏传 `--ch1` 已修复；旧输出中的 `sel:1` 不能作为硬件证据。`status.sel` 改为 `null`，请求通道另列 `sel_requested`；模拟器不再虚构守护已启动。新增实际shell/驱动回归，详见 [恢复链审计与T5修正](DELIVERY_RESUME_AUDIT_2026-10-16.md) §5–6。机端仍是此前部署版本，本轮没有重新部署。
+> **同日后续修正**：真实shell调用漏传 `--ch1` 已修复；旧输出中的 `sel:1` 不能作为硬件证据。`status.sel` 改为 `null`，请求通道另列 `sel_requested`；模拟器不再虚构守护已启动。新增实际shell/驱动回归，详见 [恢复链审计与T5修正](../archive/DELIVERY_RESUME_AUDIT_2026-10-16.md) §5–6。机端仍是此前部署版本，本轮没有重新部署。
 
 > **任务来源**：`FILMLAB_LUT_NATIVE_UI_GOALS_2026-10-16.md` §5（T5，P2：LUT预览后端产品化——「已有LUT1能力回归；关闭/恢复、切换、负载和失效状态可靠；可被统一控制器调用」）。
 > **输入**：`LUT_PIPELINE_DESIGN_2026-10-09`（链路）、`P7_RECLAIM_COUNTERMEASURE`（守护）、`U6_ONMACHINE_RESULT`（E1/E3 实测）、`T1 §4`（三概念分离）、`T2`（协议）。
