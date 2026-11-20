@@ -1,40 +1,35 @@
 #!/bin/bash
 #=====================================================================
-# EV_MOBILE.sh —— EV + WiFi → nxui 合并页 gui_evwifi.NX500
+# EV_MOBILE.sh —— EV + WiFi → 直达 LUT 滤镜面板（方案 2b）
 #=====================================================================
 # 触发条件（keyscan 规则 A）：【按住 EV 键，再按 WiFi 键】
 #   机型差异：WiFi 键 code 215 = nxkeyname "MOBILE"，NX500/NX1 通吃。
 #
-# ★ 2026-11-20 改写（方案 2b）：本槽位是滤镜功能的**唯一入口**。
-#   历史：2026-10-18 本槽位直达 LUT 面板（`nxui.sh lut`），FilmLab 独占
-#   EV+AEL，V-Log 另想一组键 —— 三组组合键换三个入口不划算。
-#   现在 FilmLab 与 LUT 是同一面板的两个页签（进程内换层），V-Log 也在本页里，
-#   EV+AEL 已腾空回社区原版。
-#   页内条目：
-#       LUT 滤镜     → filter:lut   （nxui 进程内换到 LUT 层）
-#       FilmLab      → filter:pw    （换到 PW 层）
-#       V-Log 曲线   → @gui_vlog.NX500
-#       实用功能     → @gui_func.NX500
-#       返回         → @gui_ini.NX500
-#       取消         → nxui 自己关（gui_exit.sh 被 nxui 拦成 close_requested）
+# ★ 2026-11-20 修正（用户明确要求）：**直接出 LUT 页**，不要中间的菜单页。
+#   上一版从 `nxui.sh menu gui_evwifi.NX500` 进，是 2b 第一次落地时把
+#   「单入口」理解成了「先给一页菜单」—— 那是多按一次，用户不要。
+#   现在本槽位 = `nxui.sh lut`（面板 + `--tab lut`），滤镜页内：
+#       WiFi 键 / AEL 键  → LUT ⇄ FilmLab 换层（进程内，不重启）
+#       顶栏「混合」       → 双表混合（仅 LUT 层）
+#       顶栏「菜单」       → 主菜单 gui_ini.NX500（实用功能 / V-Log 都在那儿）
+#       顶栏「关闭」/ MENU / BACK / 半按快门 → 退出
+#   同一槽位再按一次 = 关（nxui.sh 的 toggle 语义，保留）。
 #
-# ★ 为什么用 nxui 菜单而不是 mod_gui：
+# ★ 历史：2026-10-18 本槽位就是直达 LUT（`nxui.sh lut`），中间被改成合并页，
+#   现在回到直达 —— 但那时的 FilmLab 只能独占 EV+AEL，现在两层在同一面板里。
+#   `gui_evwifi.NX500` 仍然保留（主菜单/脚本里可以引用），只是不再由按键进入。
+#
+# ★ 为什么用 nxui 而不是 mod_gui：
 #   mod_gui 是三星原生 EFL 菜单，和 nxui 是两套渲染栈、两套焦点处理。
 #   nxui 是我们自己的面板，菜单页与面板同一个二进制、同一套 .NX500 解析 ——
 #   复用它是这套 mod 的核心优势，不该为了省事退回 EFL。
-#
-# ★ 为什么不再用 `nxui.sh switch <mode>`：
-#   那条路要杀掉自己再起一个进程（1 秒黑屏），而且 nxui.sh 的 pidof 会命中
-#   正在退出的自己 →「只杀不起」。现在换层只是换列表，进程/窗口/焦点都不动。
-#
-# 历史备份在机上：/opt/usr/nx-ks/nxui/backup-lut-20261018/EV_MOBILE.sh
 #=====================================================================
 
 D=/opt/usr/nx-ks
 BB=$D/busybox
 
 if [ -x "$D/nxui.sh" ] && "$D/nxui.sh" available; then
-    "$D/nxui.sh" menu gui_evwifi.NX500
+    "$D/nxui.sh" lut
     exit $?
 fi
 

@@ -7,23 +7,30 @@
 
 | 键 | 去向 |
 |---|---|
-| **EV+WiFi** | `nxui.sh menu gui_evwifi.NX500` —— **唯一**滤镜入口 |
+| **EV+WiFi** | `nxui.sh lut` —— **直达 LUT 滤镜面板**（唯一滤镜入口） |
 | EV+AEL | 腾空，`exec EV_AEL.community.sh`（社区原版 AEL 行为） |
 
-菜单页 6 项不变：`LUT 滤镜` / `FilmLab` / `V-Log 曲线` / `实用功能` / `返回` / `取消`。
+> ★ 2026-11-20 修正：2b 第一次落地时把「单入口」做成了「先给一页菜单」
+> （`nxui.sh menu gui_evwifi.NX500`）。用户明确否掉：**要直接出 LUT 页**。
+> 菜单页那一步是多按一次，而且和"单入口"的直觉相反。
+> 现在 `gui_evwifi.NX500` 仍然保留（脚本/文档可引用），但**不再由按键进入**。
 
-前两项不再写 `nxui.sh switch <mode>`，改成 nxui 认的伪命令：
+进面板后：
 
 ```
-button|LUT 滤镜|filter:lut
-button|FilmLab|filter:pw
+WiFi 键 / AEL 键  → LUT ⇄ FilmLab 换层（进程内，不重启、不黑屏）
+顶栏「混合」       → 双表混合（仅 LUT 层）
+顶栏「菜单」       → gui_ini.NX500（主菜单：实用功能 / V-Log 都在那儿）
+顶栏「关闭」/ MENU / BACK / 半按快门 → 退出
+同槽位再按 EV+WiFi → 关（nxui.sh 的 toggle 语义）
 ```
 
-`activate_item()` 里拦下 `filter:` 前缀 → `set_layer()` → 同一进程换列表、`resize_panel()`。
+`filter:lut` / `filter:pw` 仍是 nxui 认的伪命令（`gui_func.NX500` 的
+「LUT 滤镜」用它，`gui_evwifi.NX500` 也还写着），只是不再是主入口。
 
-**为什么必须换掉 switch**：`nxui.sh switch` 先 `killall -TERM nxui.arm` 再起新进程，
-面板要黑 1 秒；更根本的是它假设「一次只该有一个面板」，而单入口模型下面板必须
-活得比「当前在看哪一层」更久。进程内换层顺带消灭了 11-20 记下的
+**为什么不用 `nxui.sh switch`**：它先 `killall -TERM nxui.arm` 再起新进程，
+面板要黑 1 秒；更根本的是它假设「一次只该有一个面板」，而单入口模型下面板
+必须活得比「当前在看哪一层」更久。进程内换层顺带消灭了 11-20 记下的
 「面板完全 map 前连按会各起一个」的竞态。
 
 ## 2. 面板
