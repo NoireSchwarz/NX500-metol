@@ -35,6 +35,9 @@ RUN=/tmp/nx-lut-lite
 say() { printf '%s=%s\n' "$1" "$2"; }
 
 pop() {
+    # 面板在跑时走 nxpopup.sh：面板自己画横幅，一定在最上层；
+    # popup_timeout 是独立窗口，会被面板盖住（用户看不到 = "点了没反应"）。
+    if [ -x "$D/nxpopup.sh" ]; then "$D/nxpopup.sh" "$1" "${2:-3}"; return 0; fi
     # nice +10：弹窗别跟 di-camera-app 抢单核（社区约定）
     [ -x "$POP" ] || return 0
     nice -n +10 "$POP" " $1 " "${2:-3}" >/dev/null 2>&1

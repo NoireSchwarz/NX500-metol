@@ -131,6 +131,11 @@ static const char *net_dir = "/proc/net";
  * 跟着一起记下来。 */
 static int backend_phase, busy_recipe = -1, busy_layer = L_PW, pipe_eof;
 static char output[4096], status[384] = "选择配方以预览 · 保存后保留设置";
+/* 面板内横幅：脚本往 /tmp/nxui-banner 写一行 "<文字>\t<秒>"，面板读走删掉并
+ * 自己在最上层画出来。用它替代 popup_timeout —— 后者是独立窗口，会被面板
+ * 盖住，等于没有反馈。 */
+static char banner[256];
+static long long banner_until, banner_check;
 static char menu_path[NXUI_PATH];
 static char pending_menu[NXUI_PATH];
 static volatile sig_atomic_t interrupted;
@@ -1265,6 +1270,25 @@ static void draw(void) {
         } else {
             nk_label_colored(ctx, live ? status : "演示模式 · 未连接相机", NK_TEXT_LEFT, nk_rgb(171, 182, 190));
         }
+        /* ── 面板内横幅（2026-11-20）─────────────────────────────────
+         * 为什么不用 popup_timeout：它是独立窗口，会被这块 override-redirect
+         * 面板盖住 —— 用户看不到任何反馈（"点了没反应"）。面板自己画就一定
+         * 在最上层，字号/配色也跟当前 UI 一致。
+         * 由 /tmp/nxui-banner 驱动：一行 "<文字>\t<秒>"，画完即删。 */
+        if (banner[0]) {
+            const struct nk_user_font *f = ctx->style.font;
+            struct nk_command_buffer *cb = nk_window_get_canvas(ctx);
+            float tw = f->width(f->userdata, f->height, banner, (int)strlen(banner));
+            float bw = tw + 48, bh = 46;
+            struct nk_rect r;
+            if (bw > width - 40) bw = width - 40;
+            r = nk_rect((width - bw) / 2, height / 2 - bh / 2, bw, bh);
+            nk_fill_rect(cb, r, 8, nk_rgba(18, 22, 26, 242));
+            nk_stroke_rect(cb, r, 8, 1.5f, accent);
+            nk_draw_text(cb, nk_rect(r.x + 24, r.y + (bh - f->height) / 2 + 2, tw, f->height),
+                         banner, (int)strlen(banner), f, nk_rgba(0, 0, 0, 0),
+                         nk_rgb(232, 238, 226));
+        }
     }
     nk_end(ctx);
     nk_xlib_render(window, nk_rgb(24, 29, 33));
@@ -1810,6 +1834,32 @@ int main(int argc, char **argv) {
             if (ui_mode == UI_BROWSE) do_action(ACT_EDIT);
         }
         if (confirm_del && now_ms() - confirm_del_at > 3000) { confirm_del = 0; dirty = 1; }
+        /* 横幅：4 Hz 取一次文件，别让它跟 10 Hz 重绘抢单核 */
+        {
+            long long now = now_ms();
+            if (now - banner_check >= 250) {
+                FILE *bf;
+                banner_check = now;
+                if ((bf = fopen("/tmp/nxui-banner", "r")) != NULL) {
+                    char bl[320];
+                    if (fgets(bl, sizeof bl, bf)) {
+                        char *tab;
+                        int ttl = 3;
+                        bl[strcspn(bl, "\r\n")] = 0;
+                        if ((tab = strchr(bl, '\t')) != NULL) { *tab = 0; ttl = atoi(tab + 1); }
+                        if (ttl < 1) ttl = 1;
+                        if (ttl > 20) ttl = 20;
+                        snprintf(banner, sizeof banner, "%s", bl);
+                        banner_until = now + (long long)ttl * 1000;
+                        fprintf(stderr, "BANNER %s ttl=%d\n", banner, ttl);
+                        dirty = 1;
+                    }
+                    fclose(bf);
+                    unlink("/tmp/nxui-banner");
+                }
+                if (banner[0] && now > banner_until) { banner[0] = 0; dirty = 1; }
+            }
+        }
         refresh_services(0);
         /* Unmap as soon as a close is requested: while the backend finishes
          * (up to the 12 s timeout) the panel must not keep covering the frame
@@ -1877,6 +1927,9 @@ int main(int argc, char **argv) {
          * the 60 s idle timeout swallow the gesture. Dry runs have no gesture
          * to catch and keep the long sleep. */
         if (live && ev_fd < 0 && !child && delay > 250) delay = 250;
+        /* 横幅文件是外部写进来的（nxpopup.sh），面板睡着时不看它就等于没有。
+         * 400 ms 够用：脚本写文件到横幅出现最多慢 0.4 s，比 60 s 的空闲睡眠好得多。 */
+        if (live && delay > 400) delay = 400;
         /* 长按与二次确认都是"到点做事"，不能等到 60 s 的空闲超时才发现：
          * 按下之后没有新事件时，select 会睡满上一个 delay。 */
         if (press_active) {
@@ -1885,6 +1938,11 @@ int main(int argc, char **argv) {
         }
         if (confirm_del) {
             long long left = confirm_del_at + 3000 - now_ms();
+            if (left < delay) delay = left < 0 ? 0 : left;
+        }
+        /* 横幅到期要准时消失，不能被 60 s 的空闲睡眠拖住 */
+        if (banner[0]) {
+            long long left = banner_until - now_ms();
             if (left < delay) delay = left < 0 ? 0 : left;
         }
         if (delay < 0) delay = 0;
