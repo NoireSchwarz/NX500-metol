@@ -1,23 +1,22 @@
 #!/bin/bash
 #=====================================================================
-# EV_AEL.sh —— EV + AEL：2026-11-20 方案 2b 起本槽位腾空
+# EV_AEL.sh —— EV + AEL：本槽位不绑定任何功能（2026-11-20 修正）
 #=====================================================================
-# ★ 为什么腾空：滤镜入口收敛到 EV+WiFi 一个。
-#   EV+WiFi 的菜单页里已有 LUT / FilmLab 两个页签和 V-Log 子页，
-#   再留一条「EV+AEL 直达 V-Log」就是第二个入口 —— 一组键一个功能的
-#   约定会被破坏，按错时还会把面板盖到取景上。
+# ★ 上一版错在哪：
+#   我把 `EV_AEL.community.sh` 当成"AEL 锁定"一类的无害社区脚本，就
+#   `exec` 了它。实际它是**黑屏录像器**：
+#       blackoutprep &  → killall onscreen_ks + 起 blackout（整屏黑）
+#       blackouton      → st app led off
+#       循环 10 分钟     → stapp "app nx record start" / stop
+#   于是按一下 EV+AEL 就整屏黑 —— 用户报的"黑屏没修复"就是这个，
+#   与 V-Log 无关。
 #
-# ★ 回社区原版，不是禁用：/opt/usr/nx-ks/EV_AEL.community.sh 是社区脚本
-#   的备份（AEL 锁定那套），行为与本 mod 无关。
+# ★ 现在的语义：什么都不做。滤镜入口只有 EV+WiFi 一个（面板里 WiFi / AEL
+#   换层）。community 那个黑屏录像脚本**保留在机器上**
+#   （/opt/usr/nx-ks/EV_AEL.community.sh），想用就手动 sh 它，但不再占键。
 #
-# ★ 历史（别被旧注释误导）：本槽位曾经 = FilmLab 配方菜单（mod_gui），
-#   2026-11-20 上午改成 nxui 的 V-Log 页，同日下午随 2b 腾空。
-#   原社区脚本备份仍在 /opt/usr/nx-ks/EV_AEL.community.sh。
+# ★ 如果屏幕已经被它弄黑，手动恢复：
+#       killall -q blackout
+#       nice -n +15 /opt/usr/nx-ks/onscreen_ks &
 #=====================================================================
-D=/opt/usr/nx-ks
-
-if [ -x "$D/EV_AEL.community.sh" ]; then
-    exec "$D/EV_AEL.community.sh" "$@"
-fi
-# 备份不在了就什么都不做 —— 比弹一个「NXUI 未启用」的假警告诚实。
 exit 0
