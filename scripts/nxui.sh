@@ -181,8 +181,26 @@ if [ ! -s "$LU.rec" ] || [ "$LOOKS" -nt "$LU.stamp" ] || [ /mnt/mmc/lut/state/or
         echo 'nxui.sh: lut.sh list 失败，LUT 层将为空' >&2
     fi
 fi
+# vlog 域：同一层的第二张清单（/mnt/mmc/looks/_vlog，对数域输入的表）。
+# 它不是第三个页签 —— 面板里「再点一次 LUT 页签」换到这份清单。
+# 判据只看目录 mtime：_vlog 不进 order 文件，没有增删排序的额外信号；
+# 目录不存在时 -nt 恒假，也不多花一次 stat。
+LUV=/tmp/nxui-look-vlog
+if [ ! -s "$LUV.rec" ] || [ "$LOOKS/_vlog" -nt "$LUV.stamp" ]; then
+    if sh "$D/lut.sh" list --vlog > "$LUV.names" 2>/dev/null; then
+        : > "$LUV.rec"
+        while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            printf '%s|%s|0|0|0|0|0|0|0\n' "$name" "$name" >> "$LUV.rec"
+        done < "$LUV.names"
+        : > "$LUV.stamp"
+    else
+        echo 'nxui.sh: lut.sh list --vlog 失败，V-Log 域将为空' >&2
+    fi
+fi
 set -- --root "$D" --recipes "$LAB/recipes.txt" --engine "$D/filmlab.sh" \
-       --lut-recipes "$LU.rec" --lut-engine "$D/lut.sh"
+       --lut-recipes "$LU.rec" --lut-engine "$D/lut.sh" \
+       --lut-recipes-vlog "$LUV.rec"
 if [ "$MODE" = menu ]; then set -- "$@" --menu "${PAGE:-gui_ini.NX500}"; fi
 # lut / filmlab 只是「进来停在哪一层」的预设；两层永远都在。
 if [ "$MODE" = lut ]; then set -- "$@" --tab lut; fi

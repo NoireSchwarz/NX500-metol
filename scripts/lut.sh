@@ -225,6 +225,10 @@ table_of() {
     src=
     [ -f "$LAB/$n.cube" ] && src=$LAB/$n.cube
     [ -z "$src" ] && [ -f "$LAB/$n.bin" ] && src=$LAB/$n.bin
+    # vlog 表放在 _vlog/（见 list --vlog）。名字全库唯一，所以 apply / mix /
+    # strength 这一套动词不用为它再各加一个 --vlog 参数 —— 面板换域只是换了
+    # 一份清单，落到这里就是「这个名字在 _vlog 里」。
+    [ -z "$src" ] && [ -f "$LAB/_vlog/$n.bin" ] && src=$LAB/_vlog/$n.bin
     [ -n "$src" ] || return 1
     case "$src" in
         *.bin) echo "$src"; return 0 ;;
@@ -370,6 +374,19 @@ video)
     sh "$D/lut_video.sh" "$@"
     ;;
 list)
+    # `list --vlog` 列 /mnt/mmc/looks/_vlog（对数域输入的表，单独一页签）。
+    # 下划线目录本来就是内部件，标准列表不会带出它们。
+    if [ "${2:-}" = "--vlog" ]; then
+        VLAB=$LAB/_vlog
+        [ -d "$VLAB" ] || exit 0
+        for f in "$VLAB"/*.bin; do
+            [ -f "$f" ] || continue
+            k=$(basename "$f" .bin)
+            case "$k" in _*) continue;; esac
+            echo "$k"
+        done
+        exit 0
+    fi
     [ -d "$LAB" ] || die "no $LAB"
     order_sync || die "cannot update order"
     only_fav=0
@@ -580,7 +597,14 @@ begin)
             echo "OK resumed (look kept, previous backup reused)"
             exit 0
         fi
-        sh "$0" off > "$ST/previous-off.log" 2>&1
+        # ★ 这里以前不查退出码：off 失败一次，下面就把「已经被改过的 A18」
+        #   当成原厂表存进 a18_orig.bin，之后「还原原厂」永远回不去，且不可自愈。
+        #   非 0 一律中止，绝不覆盖备份。
+        sh "$0" off > "$ST/previous-off.log" 2>&1 \
+            || { cat "$ST/previous-off.log"; die "previous look not restored (off failed); backup NOT replaced"; }
+        if [ -f "$ST/current" ]; then
+            die "off returned 0 but a look is still active; backup NOT replaced"
+        fi
     fi
     "$SLOTW" read "$SLOT" "$ST/a18_orig.bin" > "$ST/begin.log" 2>&1 \
         || { cat "$ST/begin.log"; die "slot backup failed"; }

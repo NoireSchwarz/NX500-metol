@@ -22,6 +22,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 OUT = HERE / "out"
+# arm 目标要用 arm 版 test_input（见 verify_display 的 NXUI_TEST_INPUT）
+INPUT = Path(os.environ.get("NXUI_TEST_INPUT") or (OUT / "test_input"))
 RF = Path(os.environ.get("NXUI_ROOTFS", "/opt/nxks2/rootfs-112"))
 DISPLAY = ":98"
 
@@ -71,7 +73,7 @@ def main() -> int:
                                     env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             time.sleep(.5)
             for _ in range(2):
-                subprocess.run([str(OUT / "test_input"), "key", "Right"], env=env, check=True, timeout=5)
+                subprocess.run([str(INPUT), "key", "Right"], env=env, check=True, timeout=5)
                 time.sleep(.35)
             text = proc.communicate(timeout=10)[0].decode(errors="replace")
             assert proc.returncode == 0, text

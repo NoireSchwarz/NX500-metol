@@ -15,6 +15,7 @@
 表本身怎么混合由 test_lutmix.py / test_dual_strength.py 在 qemu 下验；
 库怎么增删由 test_lut_lib.sh 验；这里只验面板这一侧。
 """
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -22,6 +23,8 @@ import time
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "out"
+# arm 目标要用 arm 版 test_input（见 verify_display 的 NXUI_TEST_INPUT）
+INPUT = Path(os.environ.get("NXUI_TEST_INPUT") or (OUT / "test_input"))
 
 ENGINE = '''#!/bin/sh
 printf "%s\\n" "$*" >> "$NXUI_CALLS"
@@ -73,7 +76,7 @@ def run_library_ui(prefix, env, label):
                 time.sleep(.05)
 
             def send(*args):
-                subprocess.run([str(OUT / "test_input")] + list(args),
+                subprocess.run([str(INPUT)] + list(args),
                                env=env, check=True, timeout=5)
 
             def wait_for(needle, limit=4.0):

@@ -1,5 +1,6 @@
 """Bounded X11 event storms: repaint budget, idle wakeups and fast-tap delivery."""
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -7,6 +8,8 @@ import time
 from pathlib import Path
 
 OUT = Path(__file__).resolve().parent / "out"
+# arm 目标要用 arm 版 test_input（见 verify_display 的 NXUI_TEST_INPUT）
+INPUT = Path(os.environ.get("NXUI_TEST_INPUT") or (OUT / "test_input"))
 
 def run_performance(prefix, env, label):
     records = []
@@ -23,7 +26,7 @@ def run_performance(prefix, env, label):
                     else: raise AssertionError("UI not ready")
                     if event != "idle":
                         args = ["key", "Right", str(count), str(interval)] if event == "key" else [event, str(count), str(interval)]
-                        subprocess.run([str(OUT / "test_input")] + args, env=env, check=True, timeout=10)
+                        subprocess.run([str(INPUT)] + args, env=env, check=True, timeout=10)
                     assert p.wait(timeout=10) == 0, log.read_text()
                 finally:
                     if p.poll() is None: p.kill(); p.wait()

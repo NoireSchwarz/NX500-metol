@@ -28,6 +28,12 @@ struct input_event { long tv_sec, tv_usec; unsigned short type, code; int value;
 #define EV_KEY 1
 #include "nxui_services.h"
 
+/* 菜单网格：3 列 × 4 行 = 12 项/页（8a12fe7 从 2×3 改的）。
+ * ★ services_visible() 里原来还写死 6 项/页，于是第 7 项之后的服务开关
+ *   永远不刷新状态（面板显示的第一页数也不对）。改成同一个常量。 */
+#define MENU_COLS 3
+#define MENU_ROWS 4
+#define MENU_PAGE (MENU_COLS * MENU_ROWS)
 static struct nx_item items[NXUI_MAX_ITEMS];
 static const char *root = "/opt/usr/nx-ks";
 static int item_count, menu, page, live, dirty = 1, quit;
@@ -52,6 +58,17 @@ struct nx_layer {
 };
 static struct nx_layer layers[NLAYER];
 static struct nx_layer *cur = &layers[L_PW];
+/* ── LUT 层的两个输入域：std / vlog（2026-11-20）────────────────────
+ * vlog 表和普通表写的是同一个 A18 槽，区别只在「这张表是按哪种输入域做的」：
+ * 普通表吃 8bit sRGB 素材，vlog 表吃对数域素材。所以它们不是第三层，是同一
+ * 层的两张清单 —— 开第三个页签会把 720px 顶栏挤薄，也让「换层」和「换域」
+ * 两种语义混在同一排按钮里。
+ * 入口：**已经是 LUT 层时再点一次 LUT 页签 = 换域**（页签文字带 VLOG 标记）。
+ * 两个域各自记住停在哪一项；列表按需重读，不额外占一份 256 项数组
+ * （相机上 BSS 是要省着用的）。 */
+static const char *lut_path_std, *lut_path_vlog;
+static int lut_scope;                  /* 0 = std（普通表）1 = vlog（对数域表） */
+static char scope_key[2][96];          /* 每个域上次停的 look 名 */
 #define recipes  (cur->rec)
 #define count    (cur->n)
 #define selected (cur->sel)
@@ -199,7 +216,7 @@ static const char *base_name(const char *p) {
 static int services_visible(void) {
     int i;
     if (!menu) return 0;
-    for (i = page*6; i < item_count && i < page*6+6; i++)
+    for (i = page*MENU_PAGE; i < item_count && i < page*MENU_PAGE+MENU_PAGE; i++)
         if (!strcmp(base_name(items[i].command), "telnet_toggle.sh")) return 1;
     return 0;
 }
@@ -252,11 +269,57 @@ static void set_layer(int want) {
     message(lut_mode ? "LUT 层 · 选中即写 A18 槽" : "FilmLab 层 · 选中即推 PW");
     dirty = 1;
 }
+/* 换域（std ⇄ vlog），不换层：只重读一份清单，队列/引擎/A18 槽都不动。
+ * 只在「当前已经是 LUT 层」时由页签的第二次点击触发，见 lut_scope 注释。 */
+static int scope_sel(void) {
+    int i, n = layers[L_LUT].n;
+    if (!scope_key[lut_scope][0]) return 0;
+    for (i = 0; i < n; i++)
+        if (!strcmp(layers[L_LUT].rec[i].key, scope_key[lut_scope])) return i;
+    return 0;
+}
+static void toggle_lut_scope(void) {
+    struct nx_layer *L = &layers[L_LUT];
+    const char *path;
+    int next = !lut_scope, n;
+    if (child) { message("正在应用 · 完成后再切范围"); return; }
+    if (next && (!lut_path_vlog || !*lut_path_vlog)) { message("没有配 vlog 表清单"); return; }
+    if (L->sel >= 0 && L->sel < L->n)
+        snprintf(scope_key[lut_scope], sizeof scope_key[0], "%s", L->rec[L->sel].key);
+    lut_scope = next;
+    path = lut_scope ? lut_path_vlog : lut_path_std;
+    L->path = path;
+    /* 队列按序号记账。换域后同一个序号指到另一张表的另一项 —— 不在这里作废，
+     * 一个还没派发的选择就会拿 vlog 的序号去 apply 普通表的那一项。
+     * applied=-1 表示「当前选中尚未落地」，desired=-1 表示没有待发的写入。 */
+    L->q.desired = L->q.applied = -1;
+    n = nx_load_recipes(path, L->rec, NXUI_MAX_RECIPES);
+    L->n = n > 0 ? n : 0;
+    L->sel = scope_sel();
+    /* 混合的两个端点也是序号，跨域混一张 std 一张 vlog 没有意义 */
+    mix_a = mix_b = -1; mix_key_a[0] = mix_key_b[0] = 0;
+    if (ui_mode == UI_MIX) ui_mode = UI_BROWSE;
+    fprintf(stderr, "SCOPE %s entries=%d sel=%d path=%s\n",
+            lut_scope ? "vlog" : "std", L->n, L->sel, path);
+    if (L->n <= 0)
+        message(lut_scope ? "V-Log 表目录为空 · 先导入 vlog 表" : "LUT 库为空");
+    else
+        message(lut_scope ? "V-Log 表 · 按对数域输入做的，配 V-Log 素材"
+                          : "标准表 · 再点 LUT 页签可切到 V-Log 表");
+    dirty = 1;
+}
 static int load_menu(const char *source) {
     static struct nx_item pending[NXUI_MAX_ITEMS];
     char next[NXUI_PATH]; int n;
-    if (!nx_menu_path(root, source, next, sizeof next) ||
-        (n = nx_load_menu(next, pending, NXUI_MAX_ITEMS)) <= 0) {
+    /* 失败必须留一行可 grep 的日志：菜单读不出来时面板只会显示一句中文，
+     * 而测试与现场排障都只看 stderr —— 之前「子菜单生成成功但没切过去」
+     * 就是这么变成静默失败的。 */
+    if (!nx_menu_path(root, source, next, sizeof next)) {
+        fprintf(stderr, "MENU FAIL path source=%s root=%s\n", source, root);
+        message("菜单读取失败 · 详情见日志"); return 0;
+    }
+    if ((n = nx_load_menu(next, pending, NXUI_MAX_ITEMS)) <= 0) {
+        fprintf(stderr, "MENU FAIL parse file=%s items=%d\n", next, n);
         message("菜单读取失败 · 详情见日志"); return 0;
     }
     memcpy(items, pending, (size_t)n * sizeof *items);
@@ -869,6 +932,9 @@ static void do_action(int act) {
         if (ui_mode == UI_MIX) { mix_focus = 1; message("正在调 B"); break; }
         choose(selected + 1); break;
     case ACT_EDIT:
+        /* 编辑态的删除/排序走 `lut.sh del|move`，那两个动词只认标准库目录；
+         * vlog 表是另一本目录，库里那套管理动词不认它，进去只会失败。 */
+        if (lut_mode && lut_scope) { message("V-Log 表的增删排序用命令行 lut.sh"); break; }
         ui_mode = (ui_mode == UI_EDIT) ? UI_BROWSE : UI_EDIT;
         confirm_del = 0;
         message(ui_mode == UI_EDIT ? "编辑：删除 / 左移 / 右移 / 完成" : "已退出编辑");
@@ -1086,11 +1152,38 @@ static void draw(void) {
              * nk_selectable_label 的选中态只是换文字颜色，在这套深色皮肤上
              * 几乎看不出来（实测两页签长得一模一样），所以不用它。 */
             nk_bool on_lut = (cur == &layers[L_LUT]);
+            /* 宽度对调（LUT 132→152、FILMLAB 152→132）：LUT 页签在 vlog 域要
+             * 写 "● LUT·VLOG"，132 减去两侧 padding 只剩 116，正好卡在边缘；
+             * FILMLAB 8 个字符在 132 里仍有富余。总宽 284 不变。 */
             nk_layout_row_begin(ctx, NK_STATIC, 24, 5);
-            nk_layout_row_push(ctx, 132);
-            if (on_lut) nk_label_colored(ctx, "● LUT", NK_TEXT_CENTERED, accent);
-            else if (nk_button_label(ctx, "LUT")) set_layer(L_LUT);
             nk_layout_row_push(ctx, 152);
+            /* ★ 当前层的页签也必须是按钮：再点一次 = 换 LUT 的输入域
+             *   （std ⇄ vlog），vlog 表因此不需要第三个页签。
+             *   选中态靠把强调色临时塞进按钮的三种文字色来画 —— 早先用
+             *   nk_label_colored 是因为 nk_selectable_label 的选中态只换
+             *   文字色、在这套深色皮肤上看不出来；可 label 没有命中区，
+             *   「再点一次」就落空了。 */
+            {
+                const char *tab = !on_lut ? "LUT" : (lut_scope ? "● LUT·VLOG" : "● LUT");
+                struct nk_color tn = ctx->style.button.text_normal,
+                                 th = ctx->style.button.text_hover,
+                                 ta = ctx->style.button.text_active;
+                if (on_lut) {
+                    ctx->style.button.text_normal = accent;
+                    ctx->style.button.text_hover = accent;
+                    ctx->style.button.text_active = accent;
+                }
+                if (nk_button_label(ctx, tab)) {
+                    if (on_lut) toggle_lut_scope();
+                    else set_layer(L_LUT);
+                }
+                if (on_lut) {
+                    ctx->style.button.text_normal = tn;
+                    ctx->style.button.text_hover = th;
+                    ctx->style.button.text_active = ta;
+                }
+            }
+            nk_layout_row_push(ctx, 132);
             if (!on_lut) nk_label_colored(ctx, "● FILMLAB", NK_TEXT_CENTERED, accent);
             else if (nk_button_label(ctx, "FILMLAB")) set_layer(L_PW);
             /* 混合只属于 LUT 层。PW 层也留着这个按钮：换层后入口凭空消失
@@ -1107,20 +1200,20 @@ static void draw(void) {
             nk_layout_row_end(ctx);
         }
         if (menu) {
-            start = page * 12;
-            nk_layout_row_dynamic(ctx, 40, 3);
-            for (i = start; i < start + 12; i++) {
+            start = page * MENU_PAGE;
+            nk_layout_row_dynamic(ctx, 40, MENU_COLS);
+            for (i = start; i < start + MENU_PAGE; i++) {
                 if (i >= item_count) { nk_label(ctx, "", NK_TEXT_LEFT); continue; }
                 if (!strcmp(base_name(items[i].command), "telnet_toggle.sh"))
                     nx_services_label(&services, line, sizeof line);
                 else snprintf(line, sizeof line, "%s%s", items[i].checkbox ? (checked(items[i].command) ? "[开] " : "[关] ") : "", items[i].label);
                 if (nk_button_label(ctx, line)) { activate_item(i); break; }
             }
-            nk_layout_row_dynamic(ctx, 32, 3);
-            if (nk_button_label(ctx, "上一页")) { page = page > 0 ? page - 1 : (item_count-1)/12; dirty = 1; }
-            snprintf(line, sizeof line, "%d / %d", page + 1, (item_count+11)/12);
+            nk_layout_row_dynamic(ctx, 32, MENU_COLS);
+            if (nk_button_label(ctx, "上一页")) { page = page > 0 ? page - 1 : (item_count-1)/MENU_PAGE; dirty = 1; }
+            snprintf(line, sizeof line, "%d / %d", page + 1, (item_count+MENU_PAGE-1)/MENU_PAGE);
             nk_label(ctx, line, NK_TEXT_CENTERED);
-            if (nk_button_label(ctx, "下一页")) { page = (page+1) % ((item_count+11)/12); dirty = 1; }
+            if (nk_button_label(ctx, "下一页")) { page = (page+1) % ((item_count+MENU_PAGE-1)/MENU_PAGE); dirty = 1; }
         } else if (count > 0) {
             int gi, win = 5, first, idx;
             /* 60px：面板 208px 高，标题/滤镜条/状态行/滚动条/按钮行/底部状态
@@ -1518,6 +1611,7 @@ static void last_choice_save(int L)
 int main(int argc, char **argv) {
     const char *initial_menu = NULL, *shot = NULL;
     const char *pw_recipes = "/mnt/mmc/filmlab/recipes.txt", *lut_recipes = "/tmp/nxui-look.rec";
+    const char *lut_recipes_vlog = "/tmp/nxui-look-vlog.rec";
     const char *pw_engine = "/opt/usr/nx-ks/filmlab.sh", *lut_engine = "/opt/usr/nx-ks/lut.sh";
     int start_layer = L_PW, lut_alias = 0, lut_rec_given = 0, lut_eng_given = 0;
     int font_tier = 0;   /* 0=面板子集(文件) 1=GB2312 子集(family) 2=原厂(文件) */
@@ -1543,6 +1637,8 @@ int main(int argc, char **argv) {
         else if (i+1 < argc && !strcmp(argv[i], "--lut-engine")) { lut_engine = argv[++i]; lut_eng_given = 1; }
         else if (i+1 < argc && !strcmp(argv[i], "--recipes")) pw_recipes = argv[++i];
         else if (i+1 < argc && !strcmp(argv[i], "--lut-recipes")) { lut_recipes = argv[++i]; lut_rec_given = 1; }
+        /* vlog 域是同一层的第二张清单，不是第二层：见 lut_scope 的注释。 */
+        else if (i+1 < argc && !strcmp(argv[i], "--lut-recipes-vlog")) lut_recipes_vlog = argv[++i];
         else if (i+1 < argc && !strcmp(argv[i], "--menu")) initial_menu = argv[++i];
         else if (i+1 < argc && !strcmp(argv[i], "--font")) { font_name = argv[++i]; font_explicit = 1; }
         else if (i+1 < argc && !strcmp(argv[i], "--snapshot")) shot = argv[++i];
@@ -1596,6 +1692,22 @@ int main(int argc, char **argv) {
                 layers[i].n, layers[i].path);
     }
     cur = &layers[start_layer & 1];
+    /* LUT 层的两个输入域：启动永远停在 std，vlog 清单在第一次点 LUT 页签时
+     * 才读 —— 面板首帧实测 355 ms，每一毫秒都算，不预读第二份清单。 */
+    lut_path_std = lut_recipes;
+    lut_path_vlog = lut_recipes_vlog;
+    layers[L_LUT].path = lut_path_std;
+    lut_scope = 0;
+    /* 截图与自动化用：直接从 vlog 域起（正式入口永远停在 std，用户点页签
+     * 才换过去）。没有这个口子就只能靠点击驱动，截不到 vlog 域那张图。 */
+    if (getenv("NXUI_LUT_SCOPE") && !strcmp(getenv("NXUI_LUT_SCOPE"), "vlog")) {
+        int vn;
+        lut_scope = 1;
+        layers[L_LUT].path = lut_path_vlog;
+        vn = nx_load_recipes(lut_path_vlog, layers[L_LUT].rec, NXUI_MAX_RECIPES);
+        layers[L_LUT].n = vn > 0 ? vn : 0;
+        fprintf(stderr, "LOAD lut-vlog entries=%d path=%s\n", layers[L_LUT].n, lut_path_vlog);
+    }
     if (getenv("NXUI_STATE_DIR")) state_dir = getenv("NXUI_STATE_DIR");
     /* 回到上次停的那一项；没有记录就留在第一项 */
     last_choice_load(L_PW);
@@ -1891,7 +2003,9 @@ int main(int argc, char **argv) {
                 cur = &layers[saved];
             } else {
                 char list_cmd[600];
-                snprintf(list_cmd, sizeof list_cmd, "sh %s list", layers[L_LUT].eng);
+                /* vlog 域跑的是同一支 lut.sh，带 --vlog 才列 _vlog 那本目录 */
+                snprintf(list_cmd, sizeof list_cmd, "sh %s list%s", layers[L_LUT].eng,
+                         lut_scope ? " --vlog" : "");
                 if (!start_child(5, -1, list_cmd)) message("无法刷新库列表");
             }
         }

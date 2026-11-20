@@ -26,6 +26,10 @@ env["FONTCONFIG_FILE"] = str(fontconf)
 # For qemu, the ARM font library and its dependencies must come from the camera.
 armenv = env.copy()
 armenv["LD_LIBRARY_PATH"] = f"{RF}/usr/lib:{RF}/lib"
+# 合成输入也要用 arm 版：宿主 test_input 若按 armenv 的 LD_LIBRARY_PATH 启动，
+# 会去加载相机 rootfs 里的 ARM libX11 而当场 exit 1（以前 arm 的点击测试就
+# 卡在这里，看起来像「qemu 跑不动交互」）。
+armenv["NXUI_TEST_INPUT"] = str(OUT / "test_input.arm")
 data = json.loads((REPO / "scripts/filmlab/recipes.json").read_text())
 recipes = OUT / "recipes.txt"
 fields = ("R_COLOR", "G_COLOR", "B_COLOR", "HUE", "SATURATION", "SHARPNESS", "CONTRAST")
@@ -61,7 +65,16 @@ try:
             assert "KEYMAP entries=28" in tail, f"键位表条目数不对：\n{tail[-800:]}"
             assert "unknown keysym" not in tail, f"有 keysym 解析失败：\n{tail[-800:]}"
             header, shape, depth, pixels = shot.read_bytes().split(b"\n", 3)
-            assert header == b"P6" and shape == (b"720 336" if mode == "menu" else b"720 208")
+            # 尺寸以二进制自己声明的 panel= 为准：菜单页高度随条目数分页变
+            # （3×4 网格改造后 6 项是 292，旧的 336 硬编码会假失败），滤镜页
+            # 固定 208。断言的真意是「快照就是那块面板，没被裁掉」。
+            import re as _re
+            panel = _re.search(r"panel=(\d+)x(\d+)", tail)
+            assert panel, f"没有 panel 尺寸行：\n{tail[-800:]}"
+            want = f"{panel.group(1)} {panel.group(2)}".encode()
+            assert header == b"P6" and shape == want, f"{name}/{mode} 快照 {shape!r} != panel {want!r}"
+            if mode != "menu":
+                assert shape == b"720 208", f"{name}/{mode} 滤镜页高度变了：{shape!r}"
             assert len(set(pixels)) > 12, f"Empty render: {name}/{mode}"
             records.append({"target": name, "mode": mode, "shape": shape.decode(), "result": "PASS"})
         # Idle verification: elapsed time must not cause a continuous redraw loop.

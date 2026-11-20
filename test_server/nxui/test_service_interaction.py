@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 
 OUT = Path(__file__).resolve().parent / "out"
+# arm 目标要用 arm 版 test_input（见 verify_display 的 NXUI_TEST_INPUT）
+INPUT = Path(os.environ.get("NXUI_TEST_INPUT") or (OUT / "test_input"))
 HEADER = "  sl local_address rem_address st\n"
 BOTH = HEADER + "0: 00000000:0017 00000000:0000 0A\n1: 00000000:0015 00000000:0000 0A\n"
 PARTIAL = HEADER + "0: 00000000:0017 00000000:0000 0A\n"
@@ -30,7 +32,7 @@ fi
         runenv = dict(env, NXUI_NET_DIR=str(net))
         with log.open("w") as stream:
             p = subprocess.Popen(prefix + ["--live", "--root", str(root), "--menu", "gui_ini.NX500", "--lifetime-ms", "10000"], env=runenv, stdout=stream, stderr=subprocess.STDOUT)
-            def send(*args): subprocess.run([str(OUT / "test_input")] + list(args), env=runenv, check=True, timeout=5)
+            def send(*args): subprocess.run([str(INPUT)] + list(args), env=runenv, check=True, timeout=5)
             def until(fragment, count=1):
                 for _ in range(100):
                     if log.read_text().count(fragment) >= count: return
@@ -41,15 +43,15 @@ fi
                 until("READY")
                 send("click", "590", "244", "5")
                 until("telnet=0 ftp=0 label=")
-                send("click", "160", "65", "5"); until("telnet=1 ftp=1 label=")
-                send("click", "160", "65", "5"); until("telnet=0 ftp=0 label=", 2)
+                send("click", "125", "155", "5"); until("telnet=1 ftp=1 label=")
+                send("click", "125", "155", "5"); until("telnet=0 ftp=0 label=", 2)
                 # A change outside this menu must appear without reopening it.
                 (net / "tcp").write_text(PARTIAL); until("telnet=1 ftp=0 label=")
                 (root / "fail").touch()
-                send("click", "160", "65", "5"); until("BACKEND kind=4 ok=0")
+                send("click", "125", "155", "5"); until("BACKEND kind=4 ok=0")
                 (root / "fail").unlink()
-                send("click", "160", "65", "5"); until("telnet=1 ftp=1 label=", 2)
-                send("click", "535", "65", "5")
+                send("click", "125", "155", "5"); until("telnet=1 ftp=1 label=", 2)
+                send("click", "359", "155", "5")
                 for _ in range(50):
                     if "MARK" in calls.read_text(): break
                     time.sleep(.025)

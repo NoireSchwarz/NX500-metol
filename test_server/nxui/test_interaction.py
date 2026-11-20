@@ -7,6 +7,9 @@ import time
 
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "out"
+# 合成输入用宿主版 test_input；qemu/arm 目标必须换成 arm 版 —— 否则它会去
+# 加载相机 rootfs 里的 ARM libX11，直接 exit 1（verify_display 传 NXUI_TEST_INPUT）。
+INPUT = Path(os.environ.get("NXUI_TEST_INPUT") or (OUT / "test_input"))
 
 def run_interaction(prefix, env, label):
     with tempfile.TemporaryDirectory(prefix="nxui-ui-") as temp:
@@ -28,7 +31,7 @@ def run_interaction(prefix, env, label):
             except BaseException:
                 p.terminate(); p.wait(timeout=5); stream.close(); raise
         def send(*args):
-            subprocess.run([str(OUT / "test_input")] + list(args), env=env, check=True, timeout=5)
+            subprocess.run([str(INPUT)] + list(args), env=env, check=True, timeout=5)
         def finish(p, stream, log):
             try:
                 assert p.wait(timeout=6) == 0, log.read_text()
@@ -86,8 +89,10 @@ def run_interaction(prefix, env, label):
         env.pop("NXUI_FAIL"); calls.unlink()
         generated = Path(f"/tmp/gui_br.nxui-test-{os.getpid()}-{label}")
         (root / "gui_ini.NX500").write_text("button|子菜单|@/opt/usr/nx-ks/gui_settings.NX500\ncheckbox|测试开关|demo.sh\n" + f"button|动态菜单|@{generated}\n")
-        (root / "gui_settings.NX500").write_text("button|返回|@/opt/usr/nx-ks/gui_ini.NX500\n")
-        (root / "br_menu.sh").write_text(f'#!/bin/bash\necho PREPARE >> "$NXUI_CALLS"\nsync;sync;sync\nprintf "button|返回|@/opt/usr/nx-ks/gui_ini.NX500\\n" > {generated}\n')
+        # 菜单里「返回 / 取消」自 8a12fe7 起不再进网格（顶栏常驻），所以子页
+        # 用一项正常条目占位，「回上一页」改点顶栏的「返回」。
+        (root / "gui_settings.NX500").write_text("button|设置项| \n")
+        (root / "br_menu.sh").write_text(f'#!/bin/bash\necho PREPARE >> "$NXUI_CALLS"\nsync;sync;sync\nprintf "button|子项| \\n" > {generated}\n')
         (root / "sync").write_text('#!/bin/sh\necho UNEXPECTED_SYNC >> "$NXUI_CALLS"\nexit 9\n')
         (root / "sync").chmod(0o755)
         for name, action in [("demo.sh", "ON"), ("off_demo.sh", "OFF")]:
@@ -95,17 +100,18 @@ def run_interaction(prefix, env, label):
             file.write_text(f'#!/bin/sh\necho {action} >> "$NXUI_CALLS"\n'); file.chmod(0o755)
         p, stream, log = launch("--menu", "gui_ini.NX500")
         try:
-            send("click", "535", "65"); time.sleep(.8)
+            send("click", "359", "65"); time.sleep(.8)
             assert (root / "auto/demo.sh").exists(), log.read_text()
-            send("click", "535", "65"); time.sleep(.8)
+            send("click", "359", "65"); time.sleep(.8)
             assert not (root / "auto/demo.sh").exists(), log.read_text()
             assert calls.read_text().splitlines() == ["ON", "OFF"]
             assert not generated.exists(), "Submenu work ran before it was requested"
-            send("click", "160", "125"); time.sleep(.8)
+            send("click", "593", "65"); time.sleep(.8)
             assert calls.read_text().splitlines() == ["ON", "OFF", "PREPARE"]
             assert f"MENU file={generated}" in log.read_text(), log.read_text()
-            send("click", "160", "65"); time.sleep(.2)
-            send("click", "160", "65"); time.sleep(.2)
+            # 顶栏「返回」：从动态子菜单回到进它之前的 gui_ini
+            send("click", "368", "20"); time.sleep(.2)
+            send("click", "125", "65"); time.sleep(.2)
             assert "gui_settings.NX500" in log.read_text()
             send("key", "Escape"); finish(p, stream, log)
         finally:
@@ -149,7 +155,7 @@ def run_lut_interaction(prefix, env, label):
             # LUT 面板没有 PW 分量行，但仍有一行滚动条：四列同上 168px 宽，
             # 按钮行 y ≈ 123..149。"还原原厂"是第三列（LUT 多了"保存并关闭"，
             # 列序：上一个 / 保存并关闭 / 还原原厂 / 下一个）。
-            subprocess.run([str(OUT / "test_input"), "click", "448", "136", "60"], env=envs, check=True, timeout=5)
+            subprocess.run([str(INPUT), "click", "448", "136", "60"], env=envs, check=True, timeout=5)
             deadline = time.time() + 4
             while time.time() < deadline:
                 lines = calls.read_text().splitlines() if calls.exists() else []
@@ -161,7 +167,7 @@ def run_lut_interaction(prefix, env, label):
             # 拖到 480px ⇒ 比例 (480-27)/(696-30)=0.68 ⇒ 第 5 项（0 基），
             # 共 8 项。只发 press/release 的 click 测不出 motion 链；
             # 只断言"变了"也测不出"松手位置才是终点"（10Hz 会合并中间帧）。
-            subprocess.run([str(OUT / "test_input"), "drag", "20", "110", "480", "110", "10"],
+            subprocess.run([str(INPUT), "drag", "20", "110", "480", "110", "10"],
                            env=envs, check=True, timeout=8)
             deadline = time.time() + 5
             while time.time() < deadline:
@@ -171,7 +177,7 @@ def run_lut_interaction(prefix, env, label):
             lines = calls.read_text().splitlines() if calls.exists() else []
             assert lines and lines[-1] == "apply look05", (lines, log.read_text()[-600:])
             # 点轨道任意位置也应跳过去（触摸屏上比拖更常用）：680px ⇒ 第 7 项。
-            subprocess.run([str(OUT / "test_input"), "click", "680", "110", "60"], env=envs, check=True, timeout=5)
+            subprocess.run([str(INPUT), "click", "680", "110", "60"], env=envs, check=True, timeout=5)
             deadline = time.time() + 5
             while time.time() < deadline:
                 lines = calls.read_text().splitlines() if calls.exists() else []
@@ -179,7 +185,7 @@ def run_lut_interaction(prefix, env, label):
                 time.sleep(.05)
             lines = calls.read_text().splitlines() if calls.exists() else []
             assert lines and lines[-1] == "apply look07", (lines, log.read_text()[-600:])
-            subprocess.run([str(OUT / "test_input"), "key", "Escape"], env=envs, check=True, timeout=5)
+            subprocess.run([str(INPUT), "key", "Escape"], env=envs, check=True, timeout=5)
             assert p.wait(timeout=8) == 0, log.read_text()
         finally:
             if p.poll() is None: p.terminate(); p.wait(timeout=6)
