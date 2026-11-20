@@ -441,6 +441,8 @@ verification, none is "should work".
   — research and fitting of the Panasonic V-Log ⇄ Standard curves. Without that curve, V-Log
   creative tables would be nothing but double-mismatched grey on the NX500, and the baking
   pipeline in 1.15.7 would not exist.
+- **Panasonic** — original author of the 35 `varicam_official` tables and the 22
+  `lumix_color_lab` ones (VariCam LUT Library / Lumix Color Lab).
 - **[changyun233/Lumix-V-log-LUTs](https://github.com/changyun233/Lumix-V-log-LUTs)**
   — curation and previews of 107 V-Log creative tables (Booz / Changyun / Hamburger / Lucas Hu /
   Lumix Color Lab / VariCam official). These tables are **not bundled**; get them from the

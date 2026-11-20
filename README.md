@@ -430,6 +430,8 @@ sh /opt/usr/nx-ks/vlog.sh gate      # 放行检查，明细在 /tmp/nx-p0/vlog-g
 - **[NoireSchwarz/NX500_SRW_reprocessing_6.5K-oversampling](https://github.com/NoireSchwarz/NX500_SRW_reprocessing_6.5K-oversampling)**
   —— 松下 V-Log ⇄ Standard 曲线的研究与拟合。没有这条曲线，V-Log 创意表在 NX500 上只能
   是双重错位的灰片，1.15.7 的烘焙链路也就不成立。
+- **Panasonic** —— `varicam_official` 35 张与 `lumix_color_lab` 22 张的原作者（VariCam LUT
+  Library / Lumix Color Lab）。
 - **[changyun233/Lumix-V-log-LUTs](https://github.com/changyun233/Lumix-V-log-LUTs)**
   —— 107 张 V-Log 创意表的整理与预览（Booz / 尝云 / 翰博 / Lucas Hu / Lumix Color Lab /
   VariCam 官方）。这些表**不随包分发**，请从原链接获取。
