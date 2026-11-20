@@ -70,6 +70,15 @@ def load_curve(path):
     return out
 
 
+def apply_ev(lut256, ev):
+    """整体曝光补偿：log 曲线必然抬亮中高调（凹函数 g(0.5)>0.5），
+    不压回来就是"严重过曝"。ev 用 EV 表示，-0.7 ≈ ×0.62。"""
+    if ev == 0:
+        return lut256
+    k = 2.0 ** ev
+    return [max(0, min(255, int(round(v * k)))) for v in lut256]
+
+
 def build_lut(lut256, chroma=1.0):
     """由 256 项映射表算局部增益（用于色度收缩）。"""
     gain = []
@@ -110,6 +119,8 @@ def main():
                     help="解析 log 曲线的 k（默认 20；越大越平）")
     ap.add_argument("--curve", default=None,
                     help="改用 19 点 .tcy（注意：tc/*.tcy 是反 gamma 表，方向相反）")
+    ap.add_argument("--ev", type=float, default=-0.7,
+                    help="曝光补偿（EV）。log 会抬亮中高调，默认 -0.7 压回来")
     ap.add_argument("--chroma", type=float, default=1.0,
                     help="1.0=不动色度；<1 会随暗部压缩一起收色度")
     ap.add_argument("--prefix", default="vk_")
@@ -118,6 +129,7 @@ def main():
         raise SystemExit("需要 -o 或 -d")
 
     lut256 = load_curve(a.curve) if a.curve else log_curve(a.log)
+    lut256 = apply_ev(lut256, a.ev)
     lut, gain, chroma = build_lut(lut256, a.chroma)
     for p in a.inputs:
         src = pathlib.Path(p)
