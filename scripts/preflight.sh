@@ -101,6 +101,13 @@ vlog)
     else
         fail USB_CLEAR "usb-guard 缺失"
     fi
+    # 曲线引擎必须已装进机身（gamma-install.sh）。只查 SD 上那份不算数：
+    # 从菜单点「V-Log 开关」时跑的是 $KS/gamma/ 这一棵。
+    if [ -x "$KS/gamma/gamma-reload.sh" ]; then
+        pass GAMMA_ENGINE
+    else
+        fail GAMMA_ENGINE "未安装，跑 gamma-install.sh"
+    fi
     for f in bin/nxl-gamma-reload.arm bin/nxl-lutidle.arm bin/nxl-native-refresh.arm \
         lut.sh lut-core.sh gamma-reload.sh data/clean-log/NXLOG_REF_V1.bin; do
         [ -e "$CAP/$f" ] || fail CAP_FILES "缺 $f"
