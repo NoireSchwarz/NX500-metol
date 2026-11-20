@@ -46,8 +46,28 @@ engine_ok() { [ -f "$ENGINE" ] && [ ! -L "$ENGINE" ] && [ -x "$ENGINE" ]; }
 #   就 exec 了，而 $RUN=/tmp/nx-lut-lite 是 tmpfs，重启即空。
 #   ⇒ 重启后第一次 status 必报 IDLE_RAM_REPORT_UNAVAILABLE（rc=1）。
 #   这里先补目录，绕开它，不改 RC5 的脚本（改了哈希链就断）。
+#
+# ★ 2026-11-20 血账：`$GAMMA restore` 会往 /mnt/mmc/NXDEMO51/ 写审计文件
+#   （二进制里写死 `"/mnt/mmc/NXDEMO51/GAMMA_R11Q_%llu_%d_%08x"`），而这个
+#   目录**默认不存在**。于是 restore 报 VIDEO_AUDIT_DIRECTORY_FAILED 直接退出，
+#   留下半状态：clean-log.policy=READY + A18 已被改 + DYN24 全指 A18 + gamma=FACTORY
+#   ⇒ 取景黑屏，而且菜单里「V-Log 开关 / 回原厂」全都打不动（toggle 见 policy
+#   就只走 restore，restore 又死在同一处）。
+#   恢复指令（黑屏时 ssh 里跑）：
+#     mkdir -p /mnt/mmc/NXDEMO51
+#     nx_regtabwrite.arm dyn-restore        # 视频选择器回 24 条原厂地址
+#     vlog.sh off                           # A18 回 a18_orig.bin + 清 policy
 ensure_run() {
     [ -d "$RUN" ] || $BB mkdir -p "$RUN" 2>/dev/null
+    [ -d /mnt/mmc/NXDEMO51 ] || $BB mkdir -p /mnt/mmc/NXDEMO51 2>/dev/null
+}
+
+# TC 曲线（tc.sh）与 V-Log 改的是同一条 gamma：TC 直接写 p7 gamma 对象的
+# 19 节点表（SRC=0x8062f71c），V-Log 走 native 事务整条替换。叠加没有定论，
+# 而且 V-Log 的 factory 基准会读到被 TC 改过的表。所以两边都做互斥。
+tc_custom() {
+    [ -x "$D/tc.sh" ] || return 1
+    "$D/tc.sh" status 2>/dev/null | $BB grep -q '^CURVE=custom'
 }
 
 need_engine() {
@@ -63,6 +83,15 @@ field() { printf '%s\n' "$1" | $BB sed -n "s/^$2=//p" | $BB head -n 1; }
 do_curve() {   # $1 = toggle | log | restore
     need_engine || return 3
     ensure_run
+    # 只挡「上曲线」这一侧；off 任何时候都放行 —— 黑屏时那是唯一的自救。
+    case "$1" in
+    toggle|log)
+        if tc_custom; then
+            say BLOCKED TC_CURVE_CUSTOM
+            pop "先 TC 曲线回原厂（tc.sh off）" 4
+            return 4
+        fi ;;
+    esac
     out=$("$ENGINE" "$1" 2>&1)
     rc=$?
     printf '%s\n' "$out"
@@ -71,6 +100,12 @@ do_curve() {   # $1 = toggle | log | restore
         pop "V-Log 失败: ${reason:-rc=$rc}" 4
         return "$rc"
     fi
+    # 回原厂之后再确认一次视频选择器：DYN24 全指 A18 是黑屏的直接原因，
+    # 而 clean-log-release 里那一步有可能被跳过（半状态时 policy 已经没了）。
+    if [ -f "$RUN/session/video_enabled" ]; then
+        "$D/gamma/bin/nx_regtabwrite.arm" dyn-restore >/dev/null 2>&1 \
+            && say VIDEO_POINTERS restored
+    fi
     mode=$(field "$out" mode)
     case "$mode" in
     LOG)     pop "V-Log 已上曲线" 3 ;;
@@ -78,6 +113,18 @@ do_curve() {   # $1 = toggle | log | restore
     *)       pop "完成: ${mode:-UNKNOWN}" 3 ;;
     esac
     return 0
+}
+
+# 直接还原视频选择器（DYN24 的 24 条）。黑屏时 vlog.sh off 走不通的场合，
+# 这一条能单独把画面救回来 —— 它不碰 gamma，也不碰 A18。
+do_video_off() {
+    vw=$D/gamma/bin/nx_regtabwrite.arm
+    if [ ! -x "$vw" ]; then say VIDEO "MISSING $vw"; return 3; fi
+    out=$("$vw" dyn-restore 2>&1)
+    rc=$?
+    printf '%s\n' "$out"
+    if [ "$rc" = 0 ]; then pop "视频选择器已回原厂" 3; else pop "视频指针恢复失败" 4; fi
+    return "$rc"
 }
 
 do_status() {
@@ -117,8 +164,9 @@ on)     do_curve log ;;
 off)    do_curve restore ;;
 status) do_status ;;
 gate)   do_gate ;;
+video-off) do_video_off ;;
 *)
-    echo 'usage: vlog.sh toggle|on|off|status|gate'
+    echo 'usage: vlog.sh toggle|on|off|status|gate|video-off'
     echo "  ENGINE=$ENGINE"
     exit 2
     ;;

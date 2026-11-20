@@ -184,6 +184,12 @@ cmd_list() {
 
 cmd_set() {
     [ $# -ge 1 ] || die USAGE
+    # ★ V-Log 正在用时不能再改 TC：两者改的是同一条 gamma（TC 直接写 p7 gamma
+    #   对象的 19 节点表，V-Log 走 native 事务整条替换），叠加没有定论，而且
+    #   V-Log 的 factory 基准会读到被 TC 改过的表。`off`（=stock）永远放行。
+    if [ "$1" != stock ] && [ -f /tmp/nx-lut-lite/clean-log.policy ]; then
+        die VLOG_ACTIVE_RESTORE_FIRST 5
+    fi
     vals=$(load_curve "$1")
     case "$vals" in
     ERR=*) echo "$vals"; exit 1 ;;
