@@ -28,11 +28,37 @@ struct input_event { long tv_sec, tv_usec; unsigned short type, code; int value;
 #define EV_KEY 1
 #include "nxui_services.h"
 
-static struct nx_recipe recipes[NXUI_MAX_RECIPES];
 static struct nx_item items[NXUI_MAX_ITEMS];
-static struct nx_queue queue;
-static const char *root = "/opt/usr/nx-ks", *engine = "/opt/usr/nx-ks/filmlab.sh";
-static int count, item_count, selected, menu, page, live, dirty = 1, quit;
+static const char *root = "/opt/usr/nx-ks";
+static int item_count, menu, page, live, dirty = 1, quit;
+/* ── 两层滤镜：LUT(A18 槽) 与 FilmLab(prefman PW) ──────────────────
+ * 2026-11-20 方案 2b：EV+WiFi 是唯一入口，菜单页里的「LUT」「FilmLab」
+ * 不再 fork+exec 第二个 nxui（要 ~1 秒，且 pidof 会命中正在退出的自己 →
+ * 「只杀不起」），改为同一进程内换层。
+ * 两层各有自己的列表、引擎、选中项与应用队列：换层只换视图，
+ * 不动任何一层的相机状态（LUT 走 A18，PW 走 prefman，互不覆盖）。
+ * ★ 面板刻意不显示「本层是否已在机器上生效」：那是引擎的知识，面板只
+ *   知道自己这次应用过什么。归因靠「切到该层按还原」这条可控隔离路径，
+ *   不靠假读数。 */
+#define L_LUT 0
+#define L_PW  1
+#define NLAYER 2
+struct nx_layer {
+    struct nx_recipe rec[NXUI_MAX_RECIPES];
+    int n, sel;                 /* 字段名故意短：count / selected / engine 是
+                                 * 下面的宏，成员名跟宏同名会被预处理器替换 */
+    const char *path, *eng;
+    struct nx_queue q;
+};
+static struct nx_layer layers[NLAYER];
+static struct nx_layer *cur = &layers[L_PW];
+#define recipes  (cur->rec)
+#define count    (cur->n)
+#define selected (cur->sel)
+#define engine   (cur->eng)
+#define queue    (cur->q)
+#define lut_mode (cur == &layers[L_LUT])
+static char return_menu[NXUI_PATH];   /* 进滤镜前停在哪个菜单页 */
 /* Frame pacing is a device-tunable, not a constant: 100 ms protects the camera
  * from a redraw storm, but it is also the worst-case delay between a tap and
  * the next visible frame. NXUI_FRAME_MS lets the operator A/B it on the body
@@ -40,12 +66,12 @@ static int count, item_count, selected, menu, page, live, dirty = 1, quit;
 static int frame_ms = 100;
 static int bench_frames;      /* --bench-frames: render N frames back to back, then exit */
 static long long draw_total_ms; static int draw_calls;
-/* LUT mode: the same strip UI drives lut.sh instead of filmlab.sh.
- * Leaving the panel no longer restores anything: every LUT write is RAM-only
- * (a power cycle reloads the image copy), so "exit means undo" was protecting
- * nothing and cost the operator the look on the most natural exit paths
- * ("save and close", OK). Restoring is now an explicit button. */
-static int lut_mode = 0;
+/* 同一条滤镜条驱动两个引擎：LUT 层发 lut.sh，PW 层发 filmlab.sh（lut_mode
+ * 现在是「当前层是不是 LUT」的宏，见上面的 layers 块）。
+ * 离开面板不还原任何东西：LUT 的每次写入都只落在 RAM（断电即恢复镜像里的
+ * 原表），所以「退出即撤销」保护不了什么，反而在最自然的退出路径
+ * （「保存并关闭」、OK、半按快门）上把用户刚选好的效果撤掉。
+ * 还原是显式按钮。 */
 static int close_after_child;   /* 触屏滑动手势已于 11-02 删除，touch_x/active 随之作废 */
 /* ── 库管理 / 混合 / 输入（2026-11-01）───────────────────────────────
  * 三个 UI 状态共用一个滤镜条，只换下面那排按钮 —— 720×208 里没有第二个
@@ -73,7 +99,7 @@ static int mix_focus;                    /* MIX 态正在调哪一个：0=A 1=B 
 static char mix_key_a[96], mix_key_b[96];   /* 存 key 不存序号：库增删后序号会指错 */
 /* 库变更后要重建列表：1 = 重跑 `lut.sh list`（LUT 面板），2 = 重读配方表 */
 static int refresh_pending, refresh_after;
-static const char *recipes_path_global;
+#define recipes_path_global (cur->path)
 /* 长按：按下计时，手指移动超过阈值就当作滑动，不再触发 */
 static int press_active, press_x, press_y;
 static long long press_at;
@@ -100,7 +126,10 @@ static long long child_started, lifetime;
 static long long service_due;
 static struct nx_services services;
 static const char *net_dir = "/proc/net";
-static int backend_phase, busy_recipe = -1, pipe_eof;
+/* busy_* 记的是「这条子进程是为哪一层的哪一项起的」。子进程跑完后用户可能
+ * 已经换到另一层，此时 recipes[busy_recipe] 会指到错的那张表，所以层号必须
+ * 跟着一起记下来。 */
+static int backend_phase, busy_recipe = -1, busy_layer = L_PW, pipe_eof;
 static char output[4096], status[384] = "选择配方以预览 · 保存后保留设置";
 static char menu_path[NXUI_PATH];
 static char pending_menu[NXUI_PATH];
@@ -175,10 +204,13 @@ static void refresh_services(int force) {
     }
 }
 static void preview_status(void) {
-    if (child && busy_kind == 1 && queue.desired >= 0 && queue.desired != queue.running)
-        snprintf(status, sizeof status, "已选择 %s · 等待当前预览完成", recipes[queue.desired].label);
+    /* 子进程属于哪一层，就用哪一层的列表与队列 —— 完成后用户可能已经换层，
+     * 拿当前层去解释「正在保存 X」会指到另一张表上。 */
+    struct nx_layer *bl = &layers[busy_layer];
+    if (child && busy_kind == 1 && bl->q.desired >= 0 && bl->q.desired != bl->q.running)
+        snprintf(status, sizeof status, "已选择 %s · 等待当前预览完成", bl->rec[bl->q.desired].label);
     else if (child && busy_kind == 1 && busy_recipe >= 0)
-        snprintf(status, sizeof status, "%s：%s", backend_phase == 2 ? "正在确认" : (queue.committing ? "正在保存" : "正在发送"), recipes[busy_recipe].label);
+        snprintf(status, sizeof status, "%s：%s", backend_phase == 2 ? "正在确认" : (bl->q.committing ? "正在保存" : "正在发送"), bl->rec[busy_recipe].label);
     else snprintf(status, sizeof status, "%s：%s", live ? "准备预览" : "演示选择", recipes[selected].label);
     dirty = 1;
 }
@@ -196,6 +228,17 @@ static void resize_panel(void) {
         DisplayHeight(display, screen)-height, (unsigned)width, (unsigned)height);
     /* Resize the official backend's pixmap as well as the native window. */
     nk_xsurf_resize(xlib.surf, (unsigned)width, (unsigned)height);
+    dirty = 1;
+}
+/* 换层（方案 2b）：只换视图，不改任何一层的相机状态。旧层里还没落地的
+ * 选择不丢 —— 切换那一刻把它标成立即到期（due=0），主循环按层派发。 */
+static void set_layer(int want) {
+    if (want < 0 || want >= NLAYER || want == (int)(cur - layers)) return;
+    if (cur->q.desired >= 0) cur->q.due = 0;
+    cur = &layers[want];
+    ui_mode = UI_BROWSE; confirm_del = 0; press_active = 0;
+    fprintf(stderr, "LAYER %s entries=%d sel=%d\n", lut_mode ? "lut" : "pw", count, selected);
+    message(lut_mode ? "LUT 层 · 选中即写 A18 槽" : "FilmLab 层 · 选中即推 PW");
     dirty = 1;
 }
 static int load_menu(const char *source) {
@@ -276,11 +319,34 @@ static int start_child(int kind, int index, const char *command) {
     setpgid(pid, pid);
     close(pipefd[1]); fcntl(pipefd[0], F_SETFL, O_NONBLOCK);
     child_fd = pipefd[0]; child = pid; busy_kind = kind;
-    busy_recipe = index; backend_phase = 0; pipe_eof = 0;
+    busy_recipe = index; busy_layer = (int)(cur - layers); backend_phase = 0; pipe_eof = 0;
     child_started = now_ms(); child_timed_out = 0; output_len = 0;
     output[0] = 0;
     if (kind == 1) preview_status(); else message("正在执行…");
     return 1;
+}
+/* ── 两层的派发与收尾（方案 2b，2026-11-20）─────────────────────────
+ * 同一时刻只跑一个子进程：两个引擎都在写相机状态，并发只会让归因更难。
+ * 按层扫一遍，谁到期先发谁。换层时旧层被标成 due=0，于是排在最前面 ——
+ * 在 LUT 里选好就切去 PW，那次写入不会因为换了视图而丢掉。 */
+static int lut_unsettled(void) {
+    struct nx_queue *q = &layers[L_LUT].q;
+    return q->desired >= 0 && q->desired != q->applied;
+}
+static void dispatch_pending(void) {
+    int L, saved = (int)(cur - layers), idx;
+    for (L = 0; L < NLAYER && !child; L++) {
+        cur = &layers[L];
+        while (!child && (idx = nx_queue_take(&queue, now_ms())) >= 0) {
+            if (lut_mode && queue.close_requested) drain_on_close = 1;
+            if (!start_child(1, idx, NULL)) {
+                drain_on_close = 0;
+                nx_queue_done(&queue, 0);
+                message("后端启动失败");
+            }
+        }
+    }
+    cur = &layers[saved];
 }
 static int rebuild_lut_list(const char *text);
 static int reload_recipes_file(void);
@@ -296,8 +362,8 @@ static void poll_child(void) {
         long long age = now_ms() - child_started;
         /* LUT apply/off include synchronous camera events. Give a slow event
          * time to finish and allow its restoration handler to run on TERM. */
-        long long limit = lut_mode && (busy_kind == 1 || busy_kind == 8) ? 30000 : 12000;
-        long long grace = lut_mode && (busy_kind == 1 || busy_kind == 8) ? 5000 : 1000;
+        long long limit = busy_layer == L_LUT && (busy_kind == 1 || busy_kind == 8) ? 30000 : 12000;
+        long long grace = busy_layer == L_LUT && (busy_kind == 1 || busy_kind == 8) ? 5000 : 1000;
         if (age > limit && !child_timed_out) {
             child_timed_out = 1; kill(-child, SIGTERM);
             message("后端超时 · 正在停止，请检查相机状态");
@@ -311,19 +377,23 @@ static void poll_child(void) {
         !strstr(output, "VERIFY-FAIL") && !strstr(output, "REJECT");
     fprintf(stderr, "BACKEND kind=%d ok=%d elapsed_ms=%lld output=%s\n", busy_kind, success, now_ms()-child_started, output);
     if (busy_kind == 1) {
-        was_commit = queue.committing;
-        nx_queue_done(&queue, success);
-        if (queue.desired >= 0 && queue.desired != busy_recipe) preview_status();
+        /* 这条子进程属于 busy_layer，不是"当前层"：跑的过程中用户可能已经
+         * 换了页签。队列与列表都按它自己的层记账，否则另一层的 running
+         * 永远不清零，那边的写入从此再也派发不出去。 */
+        struct nx_layer *bl = &layers[busy_layer];
+        was_commit = bl->q.committing;
+        nx_queue_done(&bl->q, success);
+        if (bl->q.desired >= 0 && bl->q.desired != busy_recipe) preview_status();
         else if (success) {
-            snprintf(status, sizeof status, "已发送：%s", recipes[busy_recipe].label); dirty = 1;
+            snprintf(status, sizeof status, "已发送：%s", bl->rec[busy_recipe].label); dirty = 1;
         } else message("应用失败 · 可重新选择以重试");
         if (was_commit && success) quit = 1;
         /* A drained-on-close run has no panel left to report to: exit either
          * way. The slot write itself is verified inside lut.sh, and a failed
          * one leaves the previous look live -- exactly what a plain close
          * would have done, just with an accurate log line. */
-        if (!success && drain_on_close) { quit = 1; queue.close_requested = 0; }
-        else if (!success) { queue.close_requested = 0; queue.commit_requested = 0; }
+        if (!success && drain_on_close) { quit = 1; bl->q.close_requested = 0; }
+        else if (!success) { bl->q.close_requested = 0; bl->q.commit_requested = 0; }
         drain_on_close = 0;
     } else if (busy_kind == 3) {
         if (success && load_menu(pending_menu)) message("请选择菜单项");
@@ -354,10 +424,14 @@ static void poll_child(void) {
     } else if (busy_kind == 8) {
         message(success ? "已还原原厂表" : "还原失败 · 详情见日志");
     } else if (busy_kind == 5) {
-        /* 库变更后重跑 `lut.sh list`：输出就是新的顺序 */
+        /* 库变更后重跑 `lut.sh list`：输出就是新的顺序。列表只属于 LUT 层，
+         * 重建成败与当前停在哪一层无关 —— 临时切过去再切回来。 */
+        int saved = (int)(cur - layers);
+        cur = &layers[L_LUT];
         if (!success) message("库列表刷新失败 · 见 /tmp/nxui.log");
         else if (rebuild_lut_list(output)) message("库已刷新");
         else message("库读空了 · 保留原列表");
+        cur = &layers[saved];
     } else {
         if (!success) message(refresh_after ? "操作失败 · 详情见日志" : "命令失败 · 详情见日志");
         else if (refresh_after) { refresh_pending = refresh_after; message("已完成 · 正在刷新库"); }
@@ -762,6 +836,15 @@ static void activate_item(int index) {
     fprintf(stderr, "ACTION item=%d checkbox=%d\n", index, it->checkbox);
     if (child) { message("请等待当前操作完成"); return; }
     if (strstr(it->command, "gui_exit.sh")) { queue.close_requested = 1; return; }
+    /* 进程内换层。菜单文件里直接写 `filter:lut` / `filter:pw`，nxui 自己
+     * 认这个伪命令 —— 不再 fork `nxui.sh switch`，省掉 1 秒黑屏，也从根上
+     * 没有「pidof 命中正在退出的自己」那类竞态。 */
+    if (!strncmp(it->command, "filter:", 7)) {
+        int want = !strcmp(it->command + 7, "lut") ? L_LUT : L_PW;
+        fprintf(stderr, "ACTION filter=%s from=%s\n", it->command + 7, menu_path);
+        snprintf(return_menu, sizeof return_menu, "%s", menu_path);
+        menu = 0; set_layer(want); resize_panel(); dirty = 1; return;
+    }
     if (it->command[0] == '@') {
         if (strstr(it->command, "gui_filmlab1b")) { menu = 0; resize_panel(); return; }
         if (live && (!strncmp(it->command, "@/tmp/gui_br.", 13) ||
@@ -894,27 +977,47 @@ static void draw(void) {
          * 第三格是「混合」入口：机身实测没有 F2 这类键（2026-10-17 双探针），
          * 只有触摸，所以混合态必须有一个手指够得到的入口，否则等于没交付。
          * 非 LUT 模式用空 label 占位 —— 行是手动 push 的，格数必须对满。 */
-        nk_layout_row_begin(ctx, NK_STATIC, 24, 4);
-        nk_layout_row_push(ctx, 356);
-        nk_label_colored(ctx, menu ? "NX-KS  /  菜单"
-                            : (lut_mode ? (ui_mode == UI_EDIT ? "LUT  /  编辑"
-                                          : ui_mode == UI_MIX ? (mix_focus ? "LUT  /  混合 · B"
-                                                                           : "LUT  /  混合 · A")
-                                          : "LUT  /  3D 滤镜")
-                                        : (ui_mode == UI_EDIT ? "FILMLAB  /  编辑"
-                                          : "FILMLAB  /  滤镜预览")),
-                         NK_TEXT_LEFT, accent);
-        nk_layout_row_push(ctx, 104);
-        if (nk_button_label(ctx, menu ? "滤镜" : "菜单")) {
-            if (menu) { menu = 0; resize_panel(); }
-            else { char p[64]; snprintf(p, sizeof p, "gui_ini.NX500"); load_menu(p); }
+        if (menu) {
+            /* 菜单页：EV+WiFi 打开的第一层。右上角那个「滤镜」是回到上次
+             * 所在滤镜层的快捷方式，不是第二个入口 —— 两个页签在滤镜页里。 */
+            nk_layout_row_begin(ctx, NK_STATIC, 24, 3);
+            nk_layout_row_push(ctx, 460);
+            nk_label_colored(ctx, "NX-KS  /  菜单", NK_TEXT_LEFT, accent);
+            nk_layout_row_push(ctx, 104);
+            if (nk_button_label(ctx, "滤镜")) {
+                snprintf(return_menu, sizeof return_menu, "%s", menu_path);
+                menu = 0; resize_panel();
+            }
+            nk_layout_row_push(ctx, 104);
+            if (nk_button_label(ctx, "关闭")) queue.close_requested = 1;
+            nk_layout_row_end(ctx);
+        } else {
+            /* 滤镜页：两个页签就是两层。点页签 = 进程内换层，不重启进程，
+             * 也不碰任何一层的相机状态（LUT 走 A18，PW 走 prefman）。 */
+            /* 页签用「有色标签 + ●」表示当前层，另一层才是按钮：
+             * nk_selectable_label 的选中态只是换文字颜色，在这套深色皮肤上
+             * 几乎看不出来（实测两页签长得一模一样），所以不用它。 */
+            nk_bool on_lut = (cur == &layers[L_LUT]);
+            nk_layout_row_begin(ctx, NK_STATIC, 24, 5);
+            nk_layout_row_push(ctx, 132);
+            if (on_lut) nk_label_colored(ctx, "● LUT", NK_TEXT_CENTERED, accent);
+            else if (nk_button_label(ctx, "LUT")) set_layer(L_LUT);
+            nk_layout_row_push(ctx, 152);
+            if (!on_lut) nk_label_colored(ctx, "● FILMLAB", NK_TEXT_CENTERED, accent);
+            else if (nk_button_label(ctx, "FILMLAB")) set_layer(L_PW);
+            /* 混合只属于 LUT 层。PW 层也留着这个按钮：换层后入口凭空消失
+             * 会让人以为功能没了，点了给一句说明比藏起来好。 */
+            nk_layout_row_push(ctx, 124);
+            if (nk_button_label(ctx, ui_mode == UI_MIX ? "退出混合" : "混合")) toggle_mix();
+            nk_layout_row_push(ctx, 126);
+            if (nk_button_label(ctx, "菜单")) {
+                /* 回进滤镜前的那个菜单页（通常是 gui_evwifi），不是主菜单 */
+                load_menu(return_menu[0] ? return_menu : "gui_ini.NX500");
+            }
+            nk_layout_row_push(ctx, 126);
+            if (nk_button_label(ctx, "关闭")) queue.close_requested = 1;
+            nk_layout_row_end(ctx);
         }
-        nk_layout_row_push(ctx, 104);
-        if (!lut_mode || menu) nk_label(ctx, "", NK_TEXT_LEFT);
-        else if (nk_button_label(ctx, ui_mode == UI_MIX ? "退出混合" : "混合")) toggle_mix();
-        nk_layout_row_push(ctx, 104);
-        if (nk_button_label(ctx, "关闭")) queue.close_requested = 1;
-        nk_layout_row_end(ctx);
         if (menu) {
             start = page * 6;
             nk_layout_row_dynamic(ctx, 55, 2);
@@ -1192,27 +1295,28 @@ static int font_covers_panel(const XFont *f)
     return 1;
 }
 
-static void last_choice_path(char *buf, size_t n)
+static void last_choice_path(char *buf, size_t n, int L)
 {
-    snprintf(buf, n, "%s/last-%s", state_dir, lut_mode ? "lut" : "filmlab");
+    snprintf(buf, n, "%s/last-%s", state_dir, L == L_LUT ? "lut" : "filmlab");
 }
 
 /* 启动时把 selected 移到上次那一项。找不到（库没了这条）就留在第一项 ——
- * 静默回到开头比卡在一个不存在的名字上安全。 */
-static void last_choice_load(void)
+ * 静默回到开头比卡在一个不存在的名字上安全。两层各存各的。 */
+static void last_choice_load(int L)
 {
     char path[256], line[sizeof last_choice], *nl;
     FILE *f;
     int i;
     if (!state_dir || !*state_dir) return;
-    last_choice_path(path, sizeof path);
+    last_choice_path(path, sizeof path, L);
     if (!(f = fopen(path, "r"))) return;
     if (fgets(line, sizeof line, f)) {
         if ((nl = strchr(line, '\n')) != NULL) *nl = 0;
-        for (i = 0; i < count; i++) {
-            if (!strcmp(recipes[i].key, line)) {
-                selected = i;
-                snprintf(last_choice, sizeof last_choice, "%s", line);
+        for (i = 0; i < layers[L].n; i++) {
+            if (!strcmp(layers[L].rec[i].key, line)) {
+                layers[L].sel = i;
+                if (L == (int)(cur - layers))
+                    snprintf(last_choice, sizeof last_choice, "%s", line);
                 break;
             }
         }
@@ -1220,16 +1324,16 @@ static void last_choice_load(void)
     fclose(f);
 }
 
-static void last_choice_save(void)
+static void last_choice_save(int L)
 {
     char path[256], tmp[264];
     FILE *f;
     if (!state_dir || !*state_dir) return;
-    if (selected < 0 || selected >= count) return;
-    last_choice_path(path, sizeof path);
+    if (layers[L].sel < 0 || layers[L].sel >= layers[L].n) return;
+    last_choice_path(path, sizeof path, L);
     snprintf(tmp, sizeof tmp, "%s.tmp", path);
     if (!(f = fopen(tmp, "w"))) return;   /* 卡不在或只读：不影响面板 */
-    fprintf(f, "%s\n", recipes[selected].key);
+    fprintf(f, "%s\n", layers[L].rec[layers[L].sel].key);
     if (fclose(f) != 0) { unlink(tmp); return; }
     if (rename(tmp, path) != 0) unlink(tmp);
 }
@@ -1258,7 +1362,10 @@ static void last_choice_save(void)
  * the codepoint set is small), which is no better than the GB2312 family.
  * Env overrides: NXUI_FONT_MIN (opt-in tier 0) / NXUI_FONT_GB / NXUI_FONT_FILE. */
 int main(int argc, char **argv) {
-    const char *recipe_path = "/mnt/mmc/filmlab/recipes.txt", *initial_menu = NULL, *shot = NULL;
+    const char *initial_menu = NULL, *shot = NULL;
+    const char *pw_recipes = "/mnt/mmc/filmlab/recipes.txt", *lut_recipes = "/tmp/nxui-look.rec";
+    const char *pw_engine = "/opt/usr/nx-ks/filmlab.sh", *lut_engine = "/opt/usr/nx-ks/lut.sh";
+    int start_layer = L_PW, lut_alias = 0, lut_rec_given = 0, lut_eng_given = 0;
     int font_tier = 0;   /* 0=面板子集(文件) 1=GB2312 子集(family) 2=原厂(文件) */
     const char *font_min = getenv("NXUI_FONT_MIN");      /* 一级：按文件开，只够面板自身文本 */
     const char *font_gb = getenv("NXUI_FONT_GB");        /* 二级：GB2312 全集，按 family 开 */
@@ -1272,17 +1379,31 @@ int main(int argc, char **argv) {
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--live")) live = 1;
         else if (!strcmp(argv[i], "--dry-run")) live = 0;
-        else if (!strcmp(argv[i], "--lut")) lut_mode = 1;
+        /* --lut / --tab lut 都只是「进来就停在 LUT 层」。两层永远都装，
+         * 因为菜单页可以在进程内换层，装一半的进程一切过去就是空列表。 */
+        else if (!strcmp(argv[i], "--lut")) { start_layer = L_LUT; lut_alias = 1; }
+        else if (i+1 < argc && !strcmp(argv[i], "--tab"))
+            start_layer = !strcmp(argv[++i], "lut") ? L_LUT : L_PW;
         else if (i+1 < argc && !strcmp(argv[i], "--root")) root = argv[++i];
-        else if (i+1 < argc && !strcmp(argv[i], "--engine")) engine = argv[++i];
-        else if (i+1 < argc && !strcmp(argv[i], "--recipes")) recipe_path = argv[++i];
+        else if (i+1 < argc && !strcmp(argv[i], "--engine")) pw_engine = argv[++i];
+        else if (i+1 < argc && !strcmp(argv[i], "--lut-engine")) { lut_engine = argv[++i]; lut_eng_given = 1; }
+        else if (i+1 < argc && !strcmp(argv[i], "--recipes")) pw_recipes = argv[++i];
+        else if (i+1 < argc && !strcmp(argv[i], "--lut-recipes")) { lut_recipes = argv[++i]; lut_rec_given = 1; }
         else if (i+1 < argc && !strcmp(argv[i], "--menu")) initial_menu = argv[++i];
         else if (i+1 < argc && !strcmp(argv[i], "--font")) { font_name = argv[++i]; font_explicit = 1; }
         else if (i+1 < argc && !strcmp(argv[i], "--snapshot")) shot = argv[++i];
         else if (i+1 < argc && !strcmp(argv[i], "--lifetime-ms")) lifetime = atol(argv[++i]);
         else if (i+1 < argc && !strcmp(argv[i], "--bench-frames")) bench_frames = atoi(argv[++i]);
         else if (i+1 < argc && !strcmp(argv[i], "--inputlog")) inputlog_path = argv[++i];
-        else { fprintf(stderr, "Usage: nxui [--live|--dry-run] [--root dir] [--recipes file] [--menu gui_file] [--engine file] [--snapshot ppm] [--lifetime-ms n] [--inputlog file]\n"); return 2; }
+        else { fprintf(stderr, "Usage: nxui [--live|--dry-run] [--tab lut|pw] [--root dir] [--recipes file] [--lut-recipes file] [--menu gui_file] [--engine file] [--lut-engine file] [--snapshot ppm] [--lifetime-ms n] [--inputlog file]\n"); return 2; }
+    }
+    /* 兼容旧调用（测试与老脚本）：`--lut --recipes X --engine Y` 里的这两个
+     * 路径一直指的就是 LUT 层自己（那时只有一个层）。没单独给
+     * --lut-recipes / --lut-engine 就沿用它们，否则 --lut 会变成
+     * 「停在 LUT 层，但那一层是空的」。 */
+    if (lut_alias) {
+        if (!lut_rec_given) lut_recipes = pw_recipes;
+        if (!lut_eng_given) lut_engine = pw_engine;
     }
     if (getenv("NXUI_NET_DIR")) net_dir = getenv("NXUI_NET_DIR"); /* isolated service-state tests */
     /* 缺字回退与"子集字体缺失"共用这一个文件路径；不同固件字体名可能不同，
@@ -1306,15 +1427,25 @@ int main(int argc, char **argv) {
      * a shell is relative; set an absolute background priority for UI and jobs. */
     if (setpriority(PRIO_PROCESS, 0, 19) != 0)
         fprintf(stderr, "setpriority failed errno=%d\n", errno);
-    nx_queue_init(&queue);
-    /* LUT 每次 apply 都要写 19,712 B 槽再触发一次 DMA，逐格落地就是连续闪屏；
-     * 停手 450 ms 再落一次。FILMLAB 的 PW 预览只是标量直推，保持 150 ms 跟手。 */
-    if (lut_mode) queue.debounce_ms = NXUI_LUT_DEBOUNCE_MS;
-    count = nx_load_recipes(recipe_path, recipes, NXUI_MAX_RECIPES);
-    if (count < 0) count = 0;
-    recipes_path_global = recipe_path;
+    /* 两层一次装齐：菜单页可以在进程内换层，只装一层的话切过去就是空列表。
+     * LUT 每次 apply 都要写 19,712 B 槽再触发一次 DMA，逐格落地就是连续
+     * 闪屏，所以停手 450 ms 再落一次；PW 预览只是标量直推，150 ms 跟手。 */
+    for (i = 0; i < NLAYER; i++) {
+        nx_queue_init(&layers[i].q);
+        layers[i].q.debounce_ms = i == L_LUT ? NXUI_LUT_DEBOUNCE_MS : NXUI_DEBOUNCE_MS;
+        layers[i].eng = i == L_LUT ? lut_engine : pw_engine;
+        layers[i].path = i == L_LUT ? lut_recipes : pw_recipes;
+        layers[i].n = nx_load_recipes(layers[i].path, layers[i].rec, NXUI_MAX_RECIPES);
+        if (layers[i].n < 0) layers[i].n = 0;
+        layers[i].sel = 0;
+        fprintf(stderr, "LOAD %s entries=%d path=%s\n", i == L_LUT ? "lut" : "pw",
+                layers[i].n, layers[i].path);
+    }
+    cur = &layers[start_layer & 1];
     if (getenv("NXUI_STATE_DIR")) state_dir = getenv("NXUI_STATE_DIR");
-    last_choice_load();   /* 回到上次停的那一项；没有记录就留在第一项 */
+    /* 回到上次停的那一项；没有记录就留在第一项 */
+    last_choice_load(L_PW);
+    last_choice_load(L_LUT);
     keymap_defaults();
     keymap_load();        /* keys.conf 覆盖默认值；没有这个文件就是默认 */
     /* 无条件打一行：相机那份 libX11 的 keysym 名字表比桌面小，XF86* 若解析
@@ -1462,7 +1593,7 @@ int main(int argc, char **argv) {
         quit = 1;
     }
     while (!quit) {
-        XEvent event; fd_set fds; struct timeval wait; int index, pending, events = 0, refresh = 0, painted = 0;
+        XEvent event; fd_set fds; struct timeval wait; int pending, events = 0, refresh = 0, painted = 0;
         long long tick = now_ms(), delay = 60000;
         if (interrupted || (lifetime > 0 && now_ms()-started >= lifetime)) queue.close_requested = 1;
         /* 半按快门 S1：/dev/input/event0 code 125 (KEY_LEFTMETA) press ⇒ 关闭 */
@@ -1589,11 +1720,14 @@ int main(int argc, char **argv) {
             int mode = refresh_pending;
             refresh_pending = 0;
             if (mode == 2) {
+                int saved = (int)(cur - layers);
+                cur = &layers[L_PW];
                 if (reload_recipes_file()) message("配方库已刷新");
                 else message("配方表重读失败 · 见日志");
+                cur = &layers[saved];
             } else {
                 char list_cmd[600];
-                snprintf(list_cmd, sizeof list_cmd, "sh %s list", engine);
+                snprintf(list_cmd, sizeof list_cmd, "sh %s list", layers[L_LUT].eng);
                 if (!start_child(5, -1, list_cmd)) message("无法刷新库列表");
             }
         }
@@ -1618,24 +1752,18 @@ int main(int argc, char **argv) {
             XSync(display, False);
             panel_unmapped = 1;
         }
-        /* Closing waits for an in-flight write. In LUT mode a selection that is
-         * still inside its debounce window is not discarded either: the
+        /* Closing waits for an in-flight write. In the LUT layer a selection
+         * that is still inside its debounce window is not discarded either: the
          * operator's half-press means "this one", and the slot must end up
          * holding what the panel showed. At most one extra run -- nx_queue_select
          * overwrites, so only the last selection can be pending. FILMLAB keeps
-         * the old drop-on-close behaviour: its preview is not a commitment. */
-        if (queue.close_requested && !queue.commit_requested && !child &&
-            (!lut_mode || queue.desired < 0 || queue.desired == queue.applied)) break;
+         * the old drop-on-close behaviour: its preview is not a commitment.
+         * ★ 两层各有一条队列：关面板时要看的是 LUT 那条，不管当前停在哪一层
+         *   （在 LUT 选完就切到 PW、然后关，这次写入同样不能丢）。 */
+        if (queue.close_requested && !queue.commit_requested && !child && !lut_unsettled()) break;
         /* 关闭是用户的明确确认，不必再等 LUT 那 450 ms 去抖窗口。 */
-        if (lut_mode && queue.close_requested && queue.desired >= 0) queue.due = 0;
-        if (!child && (index = nx_queue_take(&queue, now_ms())) >= 0) {
-            if (lut_mode && queue.close_requested) drain_on_close = 1;
-            if (!start_child(1, index, NULL)) {
-                drain_on_close = 0;
-                nx_queue_done(&queue, 0);
-                message("后端启动失败");
-            }
-        }
+        if (queue.close_requested && lut_unsettled()) layers[L_LUT].q.due = 0;
+        dispatch_pending();
         if (tick >= next_frame && !quit) {
             if (dirty) {
                 long long draw_started = now_ms(), elapsed;
@@ -1665,8 +1793,14 @@ int main(int argc, char **argv) {
          * 这一行。18ms 约等于一帧，够省 CPU，也够了。 */
         if (child) delay = 18; /* only a running backend needs periodic reaping */
         if (services_visible() && service_due - tick < delay) delay = service_due - tick;
-        if (!child && queue.desired >= 0 && (queue.desired != queue.applied || queue.commit_requested))
-            if (queue.due - tick < delay) delay = queue.due - tick;
+        /* 两层各自的到期时刻都要参与 select 超时：不在当前层的那个请求
+         * 同样是用户的意图，不能被 60 s 的空闲睡眠吞掉。 */
+        for (int L = 0; L < NLAYER; L++) {
+            struct nx_queue *q = &layers[L].q;
+            if (!child && q->desired >= 0 && (q->desired != q->applied || q->commit_requested) &&
+                q->due - tick < delay)
+                delay = q->due - tick;
+        }
         if (lifetime > 0 && !queue.close_requested && started + lifetime - tick < delay)
             delay = started + lifetime - tick;
         if ((dirty || pending) && next_frame - tick < delay) delay = next_frame - tick;
@@ -1697,7 +1831,7 @@ int main(int argc, char **argv) {
     }
     /* 只在真机上记位置：--snapshot 是测试路径，不该改写用户的卡片。
      * 测试环境没有 /mnt/mmc/nxui，fopen 失败即静默跳过，天然隔离。 */
-    if (!shot) last_choice_save();
+    if (!shot) { last_choice_save(L_PW); last_choice_save(L_LUT); }
     fprintf(stderr, "EXIT renders=%d elapsed_ms=%lld wakeups=%d blits=%d max_draw_ms=%lld draw_avg_ms=%.2f draw_n=%d\n",
         render_count, now_ms()-started, wakeups, blits, max_draw_ms,
         draw_calls ? (double)draw_total_ms/draw_calls : 0.0, draw_calls);

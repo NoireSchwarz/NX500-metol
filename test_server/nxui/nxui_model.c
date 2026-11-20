@@ -114,7 +114,13 @@ bad:
 /* Menus can reference only files directly inside the installed scripts folder. */
 int nx_menu_path(const char *root, const char *source, char *out, size_t size) {
     const char *p = source; int n;
+    size_t rl;
     if (*p == '@') p++;
+    /* 「菜单」按钮回存的是 load_menu 记下的绝对路径 `<root>/<file>`（不是
+     * 相对名）。root 之外的绝对路径仍然一律拒绝，但 root 自己的前缀要认，
+     * 否则这条返回路径在 --root 指向测试目录时会静默失败。 */
+    rl = strlen(root);
+    if (rl && !strncmp(p, root, rl) && p[rl] == '/') p += rl + 1;
     if (!strncmp(p, "/tmp/gui_", 9)) {
         if (strchr(p + 5, '/') || strstr(p, "..")) return 0;
         n = snprintf(out, size, "%s", p);

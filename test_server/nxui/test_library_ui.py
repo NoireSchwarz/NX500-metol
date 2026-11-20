@@ -37,7 +37,10 @@ exit 0
 #   y=133 按钮行
 STRIP_Y, BAR_Y, BTN_Y, TOP_Y = 60, 110, 133, 20
 COL1, COL2, COL3, COL4 = 96, 272, 448, 624
-TOP_MIX_X = 540
+# 2026-11-20 方案 2b：顶栏改成五格 [LUT 132][FILMLAB 152][混合 124][菜单 126][关闭 126]，
+# 起点 x=12、间距 8 ⇒ 混合在 312..436，中心 374（旧布局的 540 现在落在「菜单」上，
+# 点下去会把面板切回菜单页，第二条 blend 永远不会发生）。
+TOP_MIX_X = 374
 
 
 def run_library_ui(prefix, env, label):

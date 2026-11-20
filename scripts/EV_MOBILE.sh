@@ -5,12 +5,14 @@
 # 触发条件（keyscan 规则 A）：【按住 EV 键，再按 WiFi 键】
 #   机型差异：WiFi 键 code 215 = nxkeyname "MOBILE"，NX500/NX1 通吃。
 #
-# ★ 2026-11-20 改写（本版）：
-#   上一版（2026-10-18）= 本槽位直达 LUT 面板（`nxui.sh lut`），
-#   FilmLab 独占 EV+AEL。现在 FilmLab 收进本页，EV+AEL 让给 V-Log。
+# ★ 2026-11-20 改写（方案 2b）：本槽位是滤镜功能的**唯一入口**。
+#   历史：2026-10-18 本槽位直达 LUT 面板（`nxui.sh lut`），FilmLab 独占
+#   EV+AEL，V-Log 另想一组键 —— 三组组合键换三个入口不划算。
+#   现在 FilmLab 与 LUT 是同一面板的两个页签（进程内换层），V-Log 也在本页里，
+#   EV+AEL 已腾空回社区原版。
 #   页内条目：
-#       FilmLab      → nxui.sh switch filmlab
-#       LUT 滤镜     → nxui.sh switch lut
+#       LUT 滤镜     → filter:lut   （nxui 进程内换到 LUT 层）
+#       FilmLab      → filter:pw    （换到 PW 层）
 #       V-Log 曲线   → @gui_vlog.NX500
 #       实用功能     → @gui_func.NX500
 #       返回         → @gui_ini.NX500
@@ -21,10 +23,9 @@
 #   nxui 是我们自己的面板，菜单页与面板同一个二进制、同一套 .NX500 解析 ——
 #   复用它是这套 mod 的核心优势，不该为了省事退回 EFL。
 #
-# ★ 面板之间怎么切：`nxui.sh switch <mode>`。
-#   nxui 单实例，从菜单页 exec `nxui.sh lut` 会让 nxui.sh 的 pidof 命中
-#   正在退出的自己 → killall 自杀 →「只杀不起」。switch 会先发 TERM、
-#   轮询等旧进程真的消失，再起新的。
+# ★ 为什么不再用 `nxui.sh switch <mode>`：
+#   那条路要杀掉自己再起一个进程（1 秒黑屏），而且 nxui.sh 的 pidof 会命中
+#   正在退出的自己 →「只杀不起」。现在换层只是换列表，进程/窗口/焦点都不动。
 #
 # 历史备份在机上：/opt/usr/nx-ks/nxui/backup-lut-20261018/EV_MOBILE.sh
 #=====================================================================

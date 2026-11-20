@@ -161,17 +161,14 @@ if [ -f /mnt/mmc/nxui/keys.conf ] && [ ! -f "$NXS/keys.conf" ]; then
     $BB cp -f /mnt/mmc/nxui/keys.conf "$NXS/keys.conf" 2>/dev/null
 fi
 export NXUI_STATE_DIR=$NXS
-# Xft uses fontconfig, so Chinese can use the existing Samsung TTF.
-set -- --root "$D" --recipes "$LAB/recipes.txt" --engine "$D/filmlab.sh"
-if [ "$MODE" = menu ]; then set -- "$@" --menu "${PAGE:-gui_ini.NX500}"; fi
-if [ "$MODE" = lut ]; then
-    # LUT 模式：滤镜库来自 lut.sh，执行器也是 lut.sh（apply / off）
-    # The look list only changes when a file is added or removed, and that
-    # updates the directory mtime, so a second open costs one stat instead of
-    # another pass over the exFAT folder.
-    LU=/tmp/nxui-look
-    if [ ! -s "$LU.rec" ] || [ "$LOOKS" -nt "$LU.stamp" ] || [ /mnt/mmc/lut/state/order -nt "$LU.stamp" ]; then
-        sh "$D/lut.sh" list > "$LU.names" 2>/dev/null || exit 1
+# ★ 2026-11-20 方案 2b：两层滤镜装进同一个进程（LUT 层 + FilmLab 层），
+#   菜单页里点「LUT / FilmLab」是进程内换层，不再 `nxui.sh switch`。
+#   所以 LUT 列表必须**任何模式都准备**：菜单页随时可能切过去，只装一层
+#   的话切过去就是空列表。生成失败不致命 —— 缺 lut.sh 时只是那一层空着，
+#   不能让整个面板（包括 FilmLab）起不来。
+LU=/tmp/nxui-look
+if [ ! -s "$LU.rec" ] || [ "$LOOKS" -nt "$LU.stamp" ] || [ /mnt/mmc/lut/state/order -nt "$LU.stamp" ]; then
+    if sh "$D/lut.sh" list > "$LU.names" 2>/dev/null; then
         # 9 字段配方格式：key|label|7 个占位值（LUT 不使用 PW 分量）。
         # Done with shell builtins: the old awk cost another process.
         : > "$LU.rec"
@@ -180,10 +177,16 @@ if [ "$MODE" = lut ]; then
             printf '%s|%s|0|0|0|0|0|0|0\n' "$name" "$name" >> "$LU.rec"
         done < "$LU.names"
         : > "$LU.stamp"
+    else
+        echo 'nxui.sh: lut.sh list 失败，LUT 层将为空' >&2
     fi
-    [ -s "$LU.rec" ] || exit 1
-    set -- --root "$D" --recipes "$LU.rec" --engine "$D/lut.sh" --lut
 fi
+set -- --root "$D" --recipes "$LAB/recipes.txt" --engine "$D/filmlab.sh" \
+       --lut-recipes "$LU.rec" --lut-engine "$D/lut.sh"
+if [ "$MODE" = menu ]; then set -- "$@" --menu "${PAGE:-gui_ini.NX500}"; fi
+# lut / filmlab 只是「进来停在哪一层」的预设；两层永远都在。
+if [ "$MODE" = lut ]; then set -- "$@" --tab lut; fi
+if [ "$MODE" = filmlab ]; then set -- "$@" --tab pw; fi
 if [ "$MODE" = demo ]; then set -- "$@" --dry-run; else set -- "$@" --live; fi
 # 透传参数放在最后追加：上面所有 set -- 都重建整个参数表，提前塞进去会被冲掉。
 if [ -n "$EXTRAS" ]; then
