@@ -1,7 +1,7 @@
 # NX500 3D LUT Complete Guide (Official API Route)
 
 > ⚠️ **2026-10-18 文档清理：本文结论已被取代。** Describes the **official-API route** (`lutapi` + CMA + guard), no longer the main line. Still useful as a LUT API reference。
-> 现行结论见 [`LUT_RETARGET_LIVE_2026-10-18.md`](LUT_RETARGET_LIVE_2026-10-18.md)。
+> 现行结论见 [`LUT_RETARGET_LIVE_2026-10-18.md`](LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md)。
 
 
 > Last updated: 2026-10-07 00:00

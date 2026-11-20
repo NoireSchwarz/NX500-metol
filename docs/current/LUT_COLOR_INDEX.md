@@ -7,12 +7,12 @@
 
 | 顺序 | 文档 | 作用 | 状态 |
 |---|---|---|---|
-| 1 | [LUT_CRCBY_ONDEVICE_FIX](LUT_CRCBY_ONDEVICE_FIX_2026-10-25.md) | 第一轮：发现 RGB 表被按 Cr,Cb,Y 消费，机端实拍确认并修 | ✅ 成立 |
-| 2 | [LUT_COLORSPACE_REGRESSION_REVIEW](LUT_COLORSPACE_REGRESSION_REVIEW_2026-10-25.md) | 第一轮：编码回归的取证与 20 个设计方向 | ⚠️ 部分结论后被修正 |
-| 3 | [LUT_PHYSICAL_FILM](LUT_PHYSICAL_FILM_2026-10-25.md) | 第二轮：三层根因 + 色域塌陷 + 物理链 | ⚠️ 边界处理后被 Codex 修正 |
-| 4 | [LUT_STYLE_AUDIT_V2](LUT_STYLE_AUDIT_V2_2026-10-25.md) | Codex：独立复核 + 12 主方案 + 曲线实测 | ✅ 成立 |
-| 5 | [LUT_DEDUP_AND_GAPFILL](LUT_DEDUP_AND_GAPFILL_2026-10-25.md) | 第三轮：同质化审计、清理、12 张补空白 | ❌ **六轴数据作废** |
-| 6 | [LUT_BRAND_LOOKS](LUT_BRAND_LOOKS_2026-10-25.md) | 第四轮：修底层 bug、7 张品牌色系 | ✅ **以本文为准** |
+| 1 | [LUT_CRCBY_ONDEVICE_FIX](LUT_FORMAT_AND_INPUT_2026-10-19_to_11-07.md) | 第一轮：发现 RGB 表被按 Cr,Cb,Y 消费，机端实拍确认并修 | ✅ 成立 |
+| 2 | [LUT_COLORSPACE_REGRESSION_REVIEW](LUT_FORMAT_AND_INPUT_2026-10-19_to_11-07.md) | 第一轮：编码回归的取证与 20 个设计方向 | ⚠️ 部分结论后被修正 |
+| 3 | [LUT_PHYSICAL_FILM](LUT_LIBRARY_2026-10-25.md) | 第二轮：三层根因 + 色域塌陷 + 物理链 | ⚠️ 边界处理后被 Codex 修正 |
+| 4 | [LUT_STYLE_AUDIT_V2](LUT_LIBRARY_2026-10-25.md) | Codex：独立复核 + 12 主方案 + 曲线实测 | ✅ 成立 |
+| 5 | [LUT_DEDUP_AND_GAPFILL](LUT_LIBRARY_2026-10-25.md) | 第三轮：同质化审计、清理、12 张补空白 | ❌ **六轴数据作废** |
+| 6 | [LUT_BRAND_LOOKS](LUT_LIBRARY_2026-10-25.md) | 第四轮：修底层 bug、7 张品牌色系 | ✅ **以本文为准** |
 | 7 | [COLOR_DEF](COLOR_DEF_2026-10-25.md) | 配色定义参考 | ✅ |
 
 ## 结论演化

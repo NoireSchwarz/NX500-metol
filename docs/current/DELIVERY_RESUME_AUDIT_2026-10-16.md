@@ -1,7 +1,7 @@
 # P5 失败后的恢复链定向审计与 LUT 后端修正
 
 > ⚠️ **2026-10-18 文档清理：本文结论已被取代。** 文中 LUT 后端的 `--ch1` / `lutsentinel` 部分已随 R-B 路线退役；**P5 投递机制的分析仍有效**。
-> 现行结论见 [`LUT_RETARGET_LIVE_2026-10-18.md`](LUT_RETARGET_LIVE_2026-10-18.md)。
+> 现行结论见 [`LUT_RETARGET_LIVE_2026-10-18.md`](LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md)。
 
 
 > 2026-10-16；承接 `HANDOVER_2026-10-16.md`，基线 `eedd885`。

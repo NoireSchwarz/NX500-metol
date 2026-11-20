@@ -2,8 +2,8 @@
 
 > **11-02 机上复查更正**：实体 Left 已明确采到 KP_Left/keycode83；本文“方向键无事件”结论已被推翻，其他键仍需逐个采数。库索引、排序缓存、BusyBox 精确匹配、恢复导出和备份冲突修复见 [11-02 复查](NXWA_ONDEVICE_REVIEW_2026-11-02.md)。
 
-> 承接 [`LUT_STRENGTH_MIX`](LUT_STRENGTH_MIX_2026-10-31.md)（数学等价性）与
-> [`LUT_ONDEVICE_PIPELINE`](LUT_ONDEVICE_PIPELINE_2026-11-01.md)（链路现状）。
+> 承接 [`LUT_STRENGTH_MIX`](LUT_MIX_AND_LIBRARY_OPS_2026-10-31.md)（数学等价性）与
+> [`LUT_ONDEVICE_PIPELINE`](LUT_PIPELINE_ROADMAP_2026-10-09_to_11-01.md)（链路现状）。
 > 上一轮只回答了「能不能」，这一轮把「强度 / 混合」做成机内可执行的动词，
 > 并补上两套库的**机内增删与排序**、以及面板的**编辑态与混合态**。
 > 全程离线（WSL 假机身树 + qemu-arm），相机未连接 —— 键位实测是唯一缺口。
@@ -52,7 +52,7 @@ look 的强度   lutmix stock.bin look.bin 500 out.bin   0=原厂
 
 ### 1.2 为什么机上算，而不是预生成 11 档
 
-[`LUT_STRENGTH_MIX`](LUT_STRENGTH_MIX_2026-10-31.md) 当时的建议是「预生成 11 档 + 切登记表」：零设备端计算，代价是 11 个槽、217 KB、以及**改强度要回到 PC**。
+[`LUT_STRENGTH_MIX`](LUT_MIX_AND_LIBRARY_OPS_2026-10-31.md) 当时的建议是「预生成 11 档 + 切登记表」：零设备端计算，代价是 11 个槽、217 KB、以及**改强度要回到 PC**。
 
 既然混合只是 4,913 次乘加（`(a*(1000-p) + b*p + 500)/1000`），机上一次实测在 qemu 下不到 0.1 s、ARM 上同量级，那么预生成就只剩缺点：占槽、占卡、占 PC。**结论改为机内即时算。**
 

@@ -52,7 +52,7 @@ DDR 字中的 62 个改掉，LDC 前的 BayerStill 探针 Y 值 6400 个里 6118
 作用点比 3D LUT 更早（BayerStill → LDC → EP LUT → JPEG）。
 
 对我们的直接影响：改曲线会动到**全部机内 LUT 的输入基准**（现按 ISP 输出曲线标定 ≈ γ2.229，
-见 [LUT_INPUT_CALIBRATION](LUT_INPUT_CALIBRATION_2026-11-07.md)）。要做就必须做成双基准可切换。
+见 [LUT_INPUT_CALIBRATION](LUT_FORMAT_AND_INPUT_2026-10-19_to_11-07.md)）。要做就必须做成双基准可切换。
 
 ### 2. 4K 30p：我上一轮说错了，撤回
 

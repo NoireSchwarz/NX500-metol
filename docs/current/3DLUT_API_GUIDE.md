@@ -1,7 +1,7 @@
 # NX500 3D LUT 完全指南（官方 API 路线）
 
 > ⚠️ **2026-10-18 文档清理：本文结论已被取代。** 本文描述的是「官方 API 路线」（`lutapi` + CMA + 守护），**已不是当前主线**；作为 LUT API 参考仍有价值。
-> 现行结论见 [`LUT_RETARGET_LIVE_2026-10-18.md`](LUT_RETARGET_LIVE_2026-10-18.md)。
+> 现行结论见 [`LUT_RETARGET_LIVE_2026-10-18.md`](LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md)。
 
 
 > 最后更新：2026-10-07 00:00
@@ -340,7 +340,7 @@ eptest_open.arm
 > **2026-11-08 更新**：本节描述的是 p7 的正常行为，不是限制。ARM 侧**可以**主动触发 Load ——
 > 用 `nx_lutload.arm once <slot>` 复刻 `FUN_004a5c44` 写序并等 `ACC_3DLUT_RD_FINISH`，
 > 换表不再需要半按。另注意 `+0x008` 的 **bit0 必须在写序末尾复位**，否则画面停在异常
-> （QEMU 记录的 `0x001` 终态不可信）。详见 [LUT 秒切](LUT_INSTANT_SWITCH_2026-11-08.md)。
+> （QEMU 记录的 `0x001` 终态不可信）。详见 [LUT 秒切](LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md)。
 
 实测（20 次连续采样，1 秒间隔）：
 ```

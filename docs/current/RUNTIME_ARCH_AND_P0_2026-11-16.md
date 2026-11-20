@@ -52,7 +52,7 @@
 
 常见 JPEG 继续走现有直切。若日志显示冷转码仍经常挡住用户请求，先做 `libjpeg-turbo` 单路原型。用缩放 IDCT 与逐行解码限制中间拷贝，单独验证竖图方向、渐进 JPEG 和 1024 px 画质，非 JPEG 由现有回退处理。发布候选先走现有 ARMv7/glibc 2.13 构建与机身加载验证。缓存键包含原图版本、方向、尺度和生成器版本。设置容量和清理节奏，仅延后清理可重建的缓存。 [libjpeg-turbo 缩放解码源码](https://github.com/libjpeg-turbo/libjpeg-turbo/blob/main/src/djpeg.c) · [现有码路](../../scripts/nx-rc/thumb/thumb-cache.sh)
 
-状态按生命周期落盘。RAM 中保存短期任务和诊断环，卡上保存素材和用户导入导出，机身 ext4 可存放高频状态与模组版本。光学与 ISP 的会话状态在唤醒后重新读回。保留 `nxstore` 的上一版和候选文件，先把频繁小写入批量化，再验证将全局 `sync` 收口到目标文件、父目录或文件系统。机上 exFAT 覆盖式重命名已有异常证据，其恢复路径要保留并用拔插和中断对照验证。 [存储事务](../../scripts/nxstore.sh) · [exFAT 实测](LUT_CRCBY_ONDEVICE_FIX_2026-10-25.md) · [Linux 3.5 同步实现](https://github.com/torvalds/linux/blob/v3.5/fs/sync.c)
+状态按生命周期落盘。RAM 中保存短期任务和诊断环，卡上保存素材和用户导入导出，机身 ext4 可存放高频状态与模组版本。光学与 ISP 的会话状态在唤醒后重新读回。保留 `nxstore` 的上一版和候选文件，先把频繁小写入批量化，再验证将全局 `sync` 收口到目标文件、父目录或文件系统。机上 exFAT 覆盖式重命名已有异常证据，其恢复路径要保留并用拔插和中断对照验证。 [存储事务](../../scripts/nxstore.sh) · [exFAT 实测](LUT_FORMAT_AND_INPUT_2026-10-19_to_11-07.md) · [Linux 3.5 同步实现](https://github.com/torvalds/linux/blob/v3.5/fs/sync.c)
 
 ### 4. 增量更新与恢复
 

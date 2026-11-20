@@ -301,7 +301,7 @@ sh /opt/usr/nx-ks/lut.sh list | begin | apply <名> | off | status   # 滤镜库
 sh /opt/usr/nx-ks/lut.sh video on|off|status                       # 录像监视，通常不用手动调
 ```
 
-细节：[`docs/current/LUT_RETARGET_LIVE_2026-10-18.md`](docs/current/LUT_RETARGET_LIVE_2026-10-18.md)　面板设计：[`docs/current/LUT_UI_2026-10-18.md`](docs/current/LUT_UI_2026-10-18.md)
+细节：[`docs/current/LUT_RETARGET_LIVE_2026-10-18.md`](docs/current/LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md)　面板设计：[`docs/current/LUT_UI_2026-10-18.md`](docs/current/LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md)
 
 ## V-Log 曲线
 

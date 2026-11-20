@@ -41,7 +41,7 @@ docs/
 | [`NX1_NX500_MEMORY_2026-11-10.md`](current/NX1_NX500_MEMORY_2026-11-10.md) · [`EXT_REVIEW_NX500_SRW_2026-11-10.md`](current/EXT_REVIEW_NX500_SRW_2026-11-10.md) · [`NXUI_ENABLE_GATE_2026-11-10.md`](current/NXUI_ENABLE_GATE_2026-11-10.md) | ★★★ NX1/NX500 内存对照；外部 6.5K 超采方案复核（**研究态，不合入**）；NXUI 启用门 |
 | [`AF_ADDRESS_MAP_2026-11-17.md`](current/AF_ADDRESS_MAP_2026-11-17.md) · [`AF_AE_COUPLING_2026-11-17.md`](current/AF_AE_COUPLING_2026-11-17.md) · [`AF_LOWLIGHT_CHAIN_2026-11-17.md`](current/AF_LOWLIGHT_CHAIN_2026-11-17.md) · [`AF_MOTION_LEVERS_2026-11-17.md`](current/AF_MOTION_LEVERS_2026-11-17.md) · [`AF_MOTION_PATCH_2026-11-17.md`](current/AF_MOTION_PATCH_2026-11-17.md) · [`AF_SLOWAF_TRIGGER_2026-11-17.md`](current/AF_SLOWAF_TRIGGER_2026-11-17.md) | ★★★ AF/曲线二期：地址图、AE 耦合、低光链、运动杠杆与补丁、慢 AF 触发 |
 | [`CURVE_CALLLINK_2026-11-17.md`](current/CURVE_ANATOMY_2026-11-17.md) · [`CURVE_DDR_LAYOUT_2026-11-17.md`](current/CURVE_ANATOMY_2026-11-17.md) · [`CURVE_INTERP_2026-11-17.md`](current/CURVE_ANATOMY_2026-11-17.md) | ★★★ 曲线调用链、DDR 布局、插值 |
-| [`LUT_INSTANT_SWITCH_2026-11-08.md`](current/LUT_INSTANT_SWITCH_2026-11-08.md) · [`TC_CURVE_ONDEVICE_2026-11-08.md`](current/TC_CURVE_AND_RESTORE_2026-11-08.md) · [`TC_RESTORATION_WORKFLOW_2026-11-08.md`](current/TC_CURVE_AND_RESTORE_2026-11-08.md) | ★★★ 瞬间换表；TC 曲线 19 节点表（**菜单入口已移除，`tc.sh` 留机备份**，见 `ce00885`） |
+| [`LUT_INSTANT_SWITCH_2026-11-08.md`](current/LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md) · [`TC_CURVE_ONDEVICE_2026-11-08.md`](current/TC_CURVE_AND_RESTORE_2026-11-08.md) · [`TC_RESTORATION_WORKFLOW_2026-11-08.md`](current/TC_CURVE_AND_RESTORE_2026-11-08.md) | ★★★ 瞬间换表；TC 曲线 19 节点表（**菜单入口已移除，`tc.sh` 留机备份**，见 `ce00885`） |
 
 ### 2.0b 上一轮（10-25 ~ 11-07）
 
@@ -51,19 +51,19 @@ docs/
 | [`VIDEO_LUT_AND_2K_2026-11-07.md`](current/VIDEO_LUT_AND_10BIT_2026-11-07.md) | ★★★★★ **视频 LUT 自动联动 + 2.5K 实测**：完成中断加载协议、`nx_lutload` watch 模式、真实 MP4 写句柄识别、灰帧缺陷、FOV 配准 |
 | [`VIDEO_10BIT_FEASIBILITY_2026-11-07.md`](current/VIDEO_LUT_AND_10BIT_2026-11-07.md) | ★★★★ **10bit 不可行的逐项证据**：`hvcC` 8bit/4:2:0、全固件 Main10 零命中 ⇒ log 不可达 |
 | [`GAMMA_LOG_VERDICT_2026-11-07.md`](current/GAMMA_LOG_VERDICT_2026-11-07.md) | ★★★★ **内置 gamma/log 判死**：`IQ[180]` 恒 NORMAL，app 侧 393 条 MOVIE 字符串零 gamma |
-| [`LUT_INPUT_CALIBRATION_2026-11-07.md`](current/LUT_INPUT_CALIBRATION_2026-11-07.md) | ★★★★ **输入曲线怎么测**：3DLUT 在 JPEG 编码器之前 ⇒ 拍 JPG 即测输入端；`measure_tone.py` 反解 gamma/肩部/趾部 |
+| [`LUT_INPUT_CALIBRATION_2026-11-07.md`](current/LUT_FORMAT_AND_INPUT_2026-10-19_to_11-07.md) | ★★★★ **输入曲线怎么测**：3DLUT 在 JPEG 编码器之前 ⇒ 拍 JPG 即测输入端；`measure_tone.py` 反解 gamma/肩部/趾部 |
 | [`RES25K_TOGGLE_2026-11-07.md`](current/RES25K_TOGGLE_2026-11-07.md) | ★★★ **原版 2.5K 映射的核对**（功能属上游 NX-KS，非本项目新增）：视角实测 + 菜单纠错（原判断「取消勾选无恢复动作」已撤回） |
-| [`LUT_LIBRARY_AND_MIX_2026-11-01.md`](current/LUT_LIBRARY_AND_MIX_2026-11-01.md) | ★★★★★ **机内混合 + 库管理 + 面板三态**：`lutmix.arm` 契约与逐字节验证；`order`/`_trash` 语义；`recipelib.sh` 块级手术与双校验；BROWSE/EDIT/MIX 与键位表；含 `nk_spacing` 撑行坑 |
-| [`LUT_ONDEVICE_PIPELINE_2026-11-01.md`](current/LUT_ONDEVICE_PIPELINE_2026-11-01.md) | ★★★★ 机内 LUT 链路现状：三条转换路径与格式契约；缺口只剩「文件怎么进卡」（FTP 即可） |
-| [`LUT_STRENGTH_MIX_2026-10-31.md`](current/LUT_STRENGTH_MIX_2026-10-31.md) | ★★★★ 强度混合的数学：逐节点插值 = 输出域混合；可辨粒度；三个必须先定的语义 |
+| [`LUT_LIBRARY_AND_MIX_2026-11-01.md`](current/LUT_MIX_AND_LIBRARY_OPS_2026-10-31.md) | ★★★★★ **机内混合 + 库管理 + 面板三态**：`lutmix.arm` 契约与逐字节验证；`order`/`_trash` 语义；`recipelib.sh` 块级手术与双校验；BROWSE/EDIT/MIX 与键位表；含 `nk_spacing` 撑行坑 |
+| [`LUT_ONDEVICE_PIPELINE_2026-11-01.md`](current/LUT_PIPELINE_ROADMAP_2026-10-09_to_11-01.md) | ★★★★ 机内 LUT 链路现状：三条转换路径与格式契约；缺口只剩「文件怎么进卡」（FTP 即可） |
+| [`LUT_STRENGTH_MIX_2026-10-31.md`](current/LUT_MIX_AND_LIBRARY_OPS_2026-10-31.md) | ★★★★ 强度混合的数学：逐节点插值 = 输出域混合；可辨粒度；三个必须先定的语义 |
 | [`DUAL_LUT_FEASIBILITY_2026-10-31.md`](current/DUAL_LUT_AND_MIX_2026-10-31.md) | ★★★ 两张表串联不可行的证明（混合是它的替代答案） |
 | [`JPEG_QUALITY_CONSTANTS_2026-10-31.md`](current/JPEG_QUALITY_CONSTANTS_2026-10-31.md) | ★★★★ 质量不是标量：17 档预置量化表、`FUN_80128378` 查表、4:2:2 为硬件固定 |
-| [`LUT_GRID_17_VS_33_2026-10-31.md`](current/LUT_GRID_17_VS_33_2026-10-31.md) | ★★★ 17³ native 与 33³ 设计的取舍实测 |
+| [`LUT_GRID_17_VS_33_2026-10-31.md`](current/LUT_FORMAT_AND_INPUT_2026-10-19_to_11-07.md) | ★★★ 17³ native 与 33³ 设计的取舍实测 |
 | [`CAPTURE_CHAIN_HARDENING_2026-10-31.md`](current/CAPTURE_CHAIN_HARDENING_2026-10-31.md) · [`MULTIEXP_P7_PATH_2026-10-31.md`](current/MULTIEXP_P7_PATH_2026-10-31.md) | 拍摄链加固与多重曝光 p7 路径 |
 | [`CUBE2LUT_NATIVE_FIX_2026-10-25.md`](current/CUBE2LUT_CONVERTER_2026-10-25.md) | ★★★★★ **机内转换器语义修正**：8880 B 旧版是 RGB 直通；现行 10,828 B `b798964d` 必须核对 |
-| [`LUT_WEB_SOURCE_2026-10-25.md`](current/LUT_WEB_SOURCE_2026-10-25.md) · [`LUT_PHYSICAL_FILM_2026-10-25.md`](current/LUT_PHYSICAL_FILM_2026-10-25.md) | 外部 CLUT 导入的解码坑；物理胶片配方线 |
-| [`LUT_AUDIT_2026-10-25.md`](current/LUT_AUDIT_2026-10-25.md) · [`LUT_STYLE_AUDIT_V2_2026-10-25.md`](current/LUT_STYLE_AUDIT_V2_2026-10-25.md) · [`LUT_DEDUP_AND_GAPFILL_2026-10-25.md`](current/LUT_DEDUP_AND_GAPFILL_2026-10-25.md) · [`LUT_BRAND_LOOKS_2026-10-25.md`](current/LUT_BRAND_LOOKS_2026-10-25.md) | 库体检、风格复核、去重补隙、品牌色 |
-| [`LUT_CRCBY_ONDEVICE_FIX_2026-10-25.md`](current/LUT_CRCBY_ONDEVICE_FIX_2026-10-25.md) · [`LUT_COLORSPACE_REGRESSION_REVIEW_2026-10-25.md`](current/LUT_COLORSPACE_REGRESSION_REVIEW_2026-10-25.md) · [`COLOR_DEF_2026-10-25.md`](current/COLOR_DEF_2026-10-25.md) | CrCbY 机内修正、色彩回归复核、`colordef` 常量 |
+| [`LUT_WEB_SOURCE_2026-10-25.md`](current/LUT_LIBRARY_2026-10-25.md) · [`LUT_PHYSICAL_FILM_2026-10-25.md`](current/LUT_LIBRARY_2026-10-25.md) | 外部 CLUT 导入的解码坑；物理胶片配方线 |
+| [`LUT_AUDIT_2026-10-25.md`](current/LUT_LIBRARY_2026-10-25.md) · [`LUT_STYLE_AUDIT_V2_2026-10-25.md`](current/LUT_LIBRARY_2026-10-25.md) · [`LUT_DEDUP_AND_GAPFILL_2026-10-25.md`](current/LUT_LIBRARY_2026-10-25.md) · [`LUT_BRAND_LOOKS_2026-10-25.md`](current/LUT_LIBRARY_2026-10-25.md) | 库体检、风格复核、去重补隙、品牌色 |
+| [`LUT_CRCBY_ONDEVICE_FIX_2026-10-25.md`](current/LUT_FORMAT_AND_INPUT_2026-10-19_to_11-07.md) · [`LUT_COLORSPACE_REGRESSION_REVIEW_2026-10-25.md`](current/LUT_FORMAT_AND_INPUT_2026-10-19_to_11-07.md) · [`COLOR_DEF_2026-10-25.md`](current/COLOR_DEF_2026-10-25.md) | CrCbY 机内修正、色彩回归复核、`colordef` 常量 |
 | [`NX500_AF_STATIC_ROUND9_2026-10-31.md`](current/NX500_AF_STATIC_ROUND9_2026-10-31.md) | AF 静态分析第九轮（前八轮见同名前缀，`ROUND2..8`） |
 
 ### 2.1 LUT：运行态换表（★ 当前主线）
@@ -72,14 +72,14 @@ docs/
 |---|---|
 | [`ADOBERGB_VIEW_PATH_2026-10-20.md`](current/ADOBERGB_VIEW_PATH_2026-10-20.md) | ★★★★ **AdobeRGB 取景不生效**：View4 四项与「色彩空间 × 屏幕色彩」的映射；`view-set` 一次写全四项；含「生效 ≠ 颜色正确」的边界 |
 | [`STILL_PATH_AUDIT_2026-10-20.md`](current/STILL_PATH_AUDIT_2026-10-20.md) | ★★★★★ **成片无 LUT 的根因**：Still 有 Still6/BV12 两条互斥分支，屏幕色彩开启走 BV12；v8 只改了 Still6。含 `still_probe.sh` 只读判别与修复 |
-| [`LUT_SWITCH_REFRESH_FIX_2026-10-19.md`](current/LUT_SWITCH_REFRESH_FIX_2026-10-19.md) | ★★★★★ **切换修复最新入口**：OLED/sRGB 选表已证；双登记项 + 正常事件重载；连续切换、off 恢复实机通过并已安装 |
-| [`LUT_CRCBY_FIX_2026-10-19.md`](current/LUT_CRCBY_FIX_2026-10-19.md) | ★★★★★ **导入偏色修复**：实机确认 Cr/Cb/Y；HP5、Fuji400H 目视通过；机身转换器更新及 36 张可追溯表重建 |
-| [`LUT_STABLE_BASELINE_HISTORY_2026-10-19.md`](current/LUT_STABLE_BASELINE_HISTORY_2026-10-19.md) | ★★★★★ **回归优先入口**：用户确认三批曾正常；v6/v7 与同名表哈希对比；异常前后选表/加载状态时间线 |
-| [`LUT_COLORSPACE_AUDIT_2026-10-19.md`](current/LUT_COLORSPACE_AUDIT_2026-10-19.md) | ★★★★★ **色彩坐标复核**：原厂 `(128,128,Y)` 中性轴；Acros 偏绿另查，未替换转换器；切换修复见上一份 |
-| [`LUT_RETARGET_LIVE_2026-10-18.md`](current/LUT_RETARGET_LIVE_2026-10-18.md) | ★★★★★ **运行态换表闭环**：4 字节登记表 + 写槽 + 半按；View/Still 双链路独立；双向回滚 |
-| [`LUT_REGTAB_READ_2026-10-18.md`](current/LUT_REGTAB_READ_2026-10-18.md) | ★★★★ **Cfg 位定义钉死** + 三张登记表上机回读 22/22 |
+| [`LUT_SWITCH_REFRESH_FIX_2026-10-19.md`](current/LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md) | ★★★★★ **切换修复最新入口**：OLED/sRGB 选表已证；双登记项 + 正常事件重载；连续切换、off 恢复实机通过并已安装 |
+| [`LUT_CRCBY_FIX_2026-10-19.md`](current/LUT_FORMAT_AND_INPUT_2026-10-19_to_11-07.md) | ★★★★★ **导入偏色修复**：实机确认 Cr/Cb/Y；HP5、Fuji400H 目视通过；机身转换器更新及 36 张可追溯表重建 |
+| [`LUT_STABLE_BASELINE_HISTORY_2026-10-19.md`](current/LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md) | ★★★★★ **回归优先入口**：用户确认三批曾正常；v6/v7 与同名表哈希对比；异常前后选表/加载状态时间线 |
+| [`LUT_COLORSPACE_AUDIT_2026-10-19.md`](current/LUT_FORMAT_AND_INPUT_2026-10-19_to_11-07.md) | ★★★★★ **色彩坐标复核**：原厂 `(128,128,Y)` 中性轴；Acros 偏绿另查，未替换转换器；切换修复见上一份 |
+| [`LUT_RETARGET_LIVE_2026-10-18.md`](current/LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md) | ★★★★★ **运行态换表闭环**：4 字节登记表 + 写槽 + 半按；View/Still 双链路独立；双向回滚 |
+| [`LUT_REGTAB_READ_2026-10-18.md`](current/LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md) | ★★★★ **Cfg 位定义钉死** + 三张登记表上机回读 22/22 |
 | [`CUBE2LUT_2026-10-18.md`](current/CUBE2LUT_CONVERTER_2026-10-25.md) | ★★★★ **机身 `.cube` 转换器**：格式契约 + 逐字节对照 + `e` 记法 bug |
-| [`LUT_UI_2026-10-18.md`](current/LUT_UI_2026-10-18.md) | ★★★★ **LUT 面板**：三入口、三个安全设计、两个实测 bug |
+| [`LUT_UI_2026-10-18.md`](current/LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md) | ★★★★ **LUT 面板**：三入口、三个安全设计、两个实测 bug |
 | [`NXUI_FOCUS_HANDOFF_2026-10-18.md`](current/NXUI_FOCUS_HANDOFF_2026-10-18.md) | ★★★★ X11 焦点不归还缺陷与回归判据 |
 | [`NXUI_NUKLEAR_2026-10-17.md`](current/NXUI_NUKLEAR_2026-10-17.md) | ★★★★ NXUI 安装与验证（10-17 版） |
 | [`UI_FRAMEWORK_ALTERNATIVES_2026-10-17.md`](current/UI_FRAMEWORK_ALTERNATIVES_2026-10-17.md) | ★★★★ 换 UI 框架的可行性分层结论 |
@@ -268,6 +268,20 @@ docs/
 
 `current/` 162 → **144** 份，`archive/` 69 → **99**。合并后全库相对链接 **0 断链**。
 
-> 下一批候选（体积较大，未做）：`LUT_*` 28 份（换表 / 审计 / 色彩空间 / 混合，可按"换表机制"
-> 与"库管理"两组归并）、`NX500_AF_STATIC_ROUND2..9`（9 轮递进，可并为一份约 1750 行的全轮记录）、
+> 下一批候选（体积较大，未做）：`NX500_AF_STATIC_ROUND2..9`（9 轮递进，可并为一份约 1750 行的全轮记录）、
 > `AF_*_2026-11-17` 6 份（2631 行）、`UI_R1*` 4 份。
+
+### 6.5 LUT 28 份按机制归组（→ 5 份，带演进叙事）
+
+`LUT_*` 前缀有 28 份、4232 行，但它们不是一个主题。按**机制**归成 5 份，
+每份开头新写一节「机制演进」，把该机制被推翻与被修正的过程按时间串起来；原文一字未删，仍按时间排在后面。
+
+| 合并后 | 份数 | 覆盖的机制片段 |
+|---|---|---|
+| `LUT_SWAP_MECHANISM_2026-10-16_to_11-08` | 11 | **换表闭环**：E4「成片死路」→ A17 打错表 → `SelLUT=bits[5:4]` 钉死 → 4 字节 + 写槽 + 半按（负片目视）→ 退出路径还原 / 改错 `View4[3]` → 秒切取消半按 |
+| `LUT_FORMAT_AND_INPUT_2026-10-19_to_11-07` | 6 | **表格式与输入端**：CrCbY 坐标、17³ native、`measure_tone.py` 反解输入曲线 |
+| `LUT_LIBRARY_2026-10-25` | 6 | **库**：体检 / 风格复核 / 去重补隙 / 品牌色 / 外部 CLUT 的 512²=64³ 解码坑 |
+| `LUT_MIX_AND_LIBRARY_OPS_2026-10-31` | 2 | **混合**：串联不可行 → 逐节点插值 ≡ 输出域混合 → `lutmix.arm` 与三态面板 |
+| `LUT_PIPELINE_ROADMAP_2026-10-09_to_11-01` | 3 | **管线**：三路径设计 → 复核 → 「转换与铺设已全在机内」 |
+
+`current/` 144 → **121** 份，`archive/` 99 → **127**。合并后全库相对链接 **0 断链**。

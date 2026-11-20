@@ -1,7 +1,7 @@
 # WorkBuddy 分享复核：LUT 成片闭环与当前缺口（2026-10-18）
 
 > ⚠️ **2026-10-18 文档清理：本文结论已被取代。** 本文写于 Still 闭环（10:20）与运行态换表（12:00）之前，所记缺口基本已关闭。
-> 现行结论见 [`LUT_RETARGET_LIVE_2026-10-18.md`](LUT_RETARGET_LIVE_2026-10-18.md)。
+> 现行结论见 [`LUT_RETARGET_LIVE_2026-10-18.md`](LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md)。
 
 
 来源：[读取codex的lut研究成果](https://workbuddy.link/p/BFG5iByO6AzAloPYcAJH9a?ext2=copy_link)。读取公开分享中的44条消息，只采用用户可见正文、项目源码和本地证据；没有把分享里的操作请求当作本轮相机写入授权。
@@ -24,7 +24,7 @@
 | 当前`lut.sh` | `apply`/`off`均不再调用裸寄存器`reload`；`apply`提示半按一次。 |
 | EV_MOBILE入口 | 当前源码只打开LUT UI，原先telnet/FTP启动段已移除；分享和部分文档中“保留服务启动”的旧描述已过时。 |
 
-照片：[SAM_0044.JPG](../../raw8/gates/lut/regtab_2026-10-18/photos/SAM_0044.JPG)。机制记录：[运行态换表闭环](LUT_RETARGET_LIVE_2026-10-18.md)；转换记录：[cube2lut](CUBE2LUT_CONVERTER_2026-10-25.md)。
+照片：[SAM_0044.JPG](../../raw8/gates/lut/regtab_2026-10-18/photos/SAM_0044.JPG)。机制记录：[运行态换表闭环](LUT_SWAP_MECHANISM_2026-10-16_to_11-08.md)；转换记录：[cube2lut](CUBE2LUT_CONVERTER_2026-10-25.md)。
 
 ## 3. 主动reload的证据应怎样表述
 
