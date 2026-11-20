@@ -112,3 +112,6 @@ Two side notes for anyone poking at these cameras:
 
 Full write-up and all the raw dumps are in the repo (AGPL-3.0):
 https://github.com/WApaperplane/metol
+
+- write-up: `docs/current/WIFI_5GHZ_FINAL_2026-11-20.md`
+- raw dumps + repro scripts: `test_server/wifi5g/`
