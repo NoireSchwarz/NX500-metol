@@ -88,6 +88,25 @@ rm -f /tmp/nxui-look.rec     # 让 nxui.sh 重建清单（判据是 looks 目录
 不依赖 V-Log gamma 引擎；引擎在 `$D/gamma/` 里默认没装，`_vlog/` 那 10 张仍是
 "等引擎"的状态。
 
+### 5b. 原表也进 `_vlog/`（2026-11-20 追加）
+
+用户要求两条域都要。原 V-Log 表（不做 S2V）另转一份 17³ 槽表进 `looks/_vlog/`：
+
+- 名字加 **`vl_`** 前缀（`vc_bleach_sb` → `vl_bleach_sb`）。不能与标准版同名：
+  `lut.sh::table_of` 先查 `looks/`、查不到才查 `looks/_vlog/`，同名会永远命中
+  标准版，log 版就再也拿不到。
+- 去重要**只在同一域内做**。跟标准域那 125 张比会报 3 个"重复"（`vl_bw_locondk`
+  ~ `mono_acros` 等），那是跨域伪重复 —— 同一张黑白表吃 log 和吃 JPEG 完全是
+  两回事。只跟 `_vlog/` 现有 10 张比：**57 张全部 DISTINCT**（最小 3.36，
+  `vl_agressive` vs `vlog_g200n`）。
+- 上机后：标准域 176 条（120 + 56），V-Log 域 67 条（10 + 57）。
+
+### 5c. 名字上限是 12 字符
+
+面板列表 5 格、每格约 133 px，19px 字体下 **13 个字符就开始被裁**（实测
+`lcl_nostbleach` 显示成 `lcl_nostblea`）。所以 `Nostalgic_BleachByPass` 缩成
+`lcl_bleach`。批量导库前先按 12 字符过一遍名字。
+
 ## 6. 遗留
 
 - 烘焙用的是 S5II 的 S2V。NX500 的 JPEG 编码不是 Panasonic Standard，两者白点与
