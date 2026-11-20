@@ -25,6 +25,13 @@ RC5 的 JSON 自己就承认没验证过这条路：
 `actual_new_video_consumption_verified:false`、`native_queue_is_hardware_completion:false`、
 `hardware_pixels_verified:false`。
 
+> **★ 2026-11-20 晚些时候的更正**：上面这条"形状对不上"的推断**被证伪了**。
+> 24 个槽读回来全部是 19,712 B 的同格式 3D LUT（见
+> [DYN24_MAP_2026-11-20.md](DYN24_MAP_2026-11-20.md)），而且 11-07 我们已经把
+> 23 项全指 A18、录像 179 帧正常。**DYN24 全指 A18 解释不了黑屏。**
+> 现在最可疑的是 gamma native 事务（`native_queue_is_hardware_completion:false`
+> —— 排队就走，不等硬件确认），用 §5 的 A/B 实验定性。
+
 ## 2. 为什么菜单里"不可用"
 
 `vlog.sh toggle` 见到 `clean-log.policy` 就只走 `restore`，而 `restore` 死在这里：
@@ -66,10 +73,14 @@ preflight `READY=1`。
 
 ## 5. 仍未解决
 
-- **V-Log 录像本身仍然不成立**。上面只是把状态救回来，`video_enable` 那条
-  "24 条全指 A18"的路没有改。要真让录像带 log，得先弄清 DYN24 的 24 条
-  各对应什么（哪些视频档、表长/格式），再决定是"只指其中几条"还是"给视频
-  单独生成 1D 曲线"。这是 p7 侧的活。
+- **黑屏的触发点还没指认**。DYN24 那条已被排除（见 §1 的更正），剩下最可疑的是
+  gamma native 事务。二分实验：
+  A）只跑 `lut.sh clean-log-prepare`（写 A18 + video_enable，不跑 gamma）；
+  B）只跑 `gamma-reload.sh log`（不 prepare）。哪个黑，问题就在哪一半。
+- **V-Log 录像本身仍然不成立**：即便黑屏修好，`video_enable` 那条
+  "24 条全指 A18"的路也要重新评估（11-07 的 23 项版本录像正常，说明路本身不必然坏）。
+  要真让录像带 log，得先弄清 DYN24 的 24 条各对应什么 —— 见
+  [DYN24_MAP_2026-11-20.md](DYN24_MAP_2026-11-20.md)。
 - 在此之前，V-Log 只当**拍照/取景**用；要录像先 `vlog.sh off`。
 - `lut.sh video-off` 在 VLOG 模式下救不了：lut-core 的分支让它走 `log_neutral`，
   末尾又 `video_enable`。必须用 `vlog.sh video-off`（直接调 dyn-restore）。
