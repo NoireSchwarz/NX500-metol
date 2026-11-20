@@ -1,0 +1,27 @@
+#=====================================================================
+# gui_evwifi.NX500 —— EV+WiFi 合并页（2026-11-20）
+#=====================================================================
+# ★ 为什么合并（省键位）：
+#     FilmLab 独占了 EV+AEL，LUT 独占了 EV+WiFi，V-Log 曲线还想再要一组。
+#     三组组合键换三个入口不划算 —— 收进一页，EV+WiFi 一键进，
+#     EV+AEL 就此空出来可以复用。
+#     代价要说清楚：LUT 从「一键直达」变成「一键进页 + 一按」。
+#
+# ★ 为什么这一页走 mod_gui 而不是 nxui 面板：
+#     nxui 是单实例，面板里再 exec `nxui.sh lut` 时 nxui.sh 会看到
+#     pidof nxui.arm 命中自己 → killall 自杀 → 「只杀不起」。
+#     mod_gui 是另一个进程，`nxui.sh <mode>` 杀掉 mod_gui 再起面板，
+#     这正是 gui_func.NX500 里「LUT 滤镜」一直在用的路径，零新风险。
+#
+# 格式：button|标签|命令   /   @ 前缀 = 打开子菜单
+# ★ 标签长度铁律（2026-10-04 实机截图教训）：mod_gui 是 2 列按钮网格，
+#   标签超长会被【静默截断成「一 键...」】。控制在 6 个全角字符内。
+#=====================================================================
+
+button|FilmLab|nxui.sh filmlab
+button|LUT 滤镜|nxui.sh lut
+button|V-Log 曲线|@/opt/usr/nx-ks/gui_vlog.NX500
+
+button|实用功能|@/opt/usr/nx-ks/gui_func.NX500
+button|返回|@/opt/usr/nx-ks/gui_ini.NX500
+button|取消|/opt/usr/nx-ks/gui_exit.sh

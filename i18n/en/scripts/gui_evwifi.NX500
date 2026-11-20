@@ -1,0 +1,22 @@
+#=====================================================================
+# gui_evwifi.NX500 — EV+WiFi merged page (EN)
+#=====================================================================
+# Merged so one key combo covers three entries instead of three combos.
+# Kept on mod_gui rather than the nxui panel: nxui is single-instance, so
+# exec'ing `nxui.sh lut` from inside it makes nxui.sh see its own pid
+# (pidof nxui.arm) and kill itself -> panel dies and never comes back.
+# mod_gui is a separate process; `nxui.sh <mode>` kills mod_gui first,
+# which is the path gui_func.NX500 has always used for "LUT Filter".
+#
+# Format: button|label|command   /   @ prefix = open submenu
+# Keep labels within 6 full-width chars: mod_gui is a 2-column grid and
+# silently truncates longer labels.
+#=====================================================================
+
+button|FilmLab|nxui.sh filmlab
+button|LUT Filter|nxui.sh lut
+button|V-Log Curve|@/opt/usr/nx-ks/gui_vlog.NX500
+
+button|Functions|@/opt/usr/nx-ks/gui_func.NX500
+button|GO BACK|@/opt/usr/nx-ks/gui_ini.NX500
+button|CANCEL|/opt/usr/nx-ks/gui_exit.sh
