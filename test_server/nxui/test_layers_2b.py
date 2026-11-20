@@ -83,6 +83,29 @@ def run_layers(prefix, env, label):
             text = log.read_text()
             assert "LAYER pw entries=2" in text, text[-600:]
 
+            # 2b. 单击 WiFi / AEL 换层（2026-11-20 追加要求）
+            #     WiFi = X keycode 223（有 keysym XF86Mail），AEL = 222/224 之一
+            #     （键位表上是 NoSymbol）—— 两条路径都必须能换。
+            def send_keycode(code):
+                subprocess.run([str(OUT / "test_input"), "keycode", code],
+                               env=env, check=True, timeout=6)
+
+            n_before = log.read_text().count("LAYER lut")
+            send_keycode("223")
+            for _ in range(60):
+                if log.read_text().count("LAYER lut") > n_before: break
+                time.sleep(.05)
+            text = log.read_text()
+            assert text.count("LAYER lut") > n_before, ("WiFi 键没换层", text[-600:])
+
+            n_before = log.read_text().count("LAYER pw")
+            send_keycode("222")
+            for _ in range(60):
+                if log.read_text().count("LAYER pw") > n_before: break
+                time.sleep(.05)
+            text = log.read_text()
+            assert text.count("LAYER pw") > n_before, ("AEL 键没换层", text[-600:])
+
             # 3. 「菜单」回进来时那一页，不是 gui_ini
             click(BTN_MENU_X, TOP_Y)
             for _ in range(60):

@@ -22,6 +22,16 @@ int main(int argc, char **argv) {
             e.type = KeyPress; XSendEvent(d, w, False, KeyPressMask, &e); XFlush(d);
             pause_ms(argc > 4 ? atol(argv[4]) : 30);
         }
+    } else if (!strcmp(argv[1], "keycode")) {
+        /* 按 X keycode 直接发键：相机的 WiFi/AEL 键里有一个在键位表上
+         * 没有 keysym（NoSymbol），XKeysymToKeycode 根本走不通。 */
+        count = argc > 3 ? atoi(argv[3]) : 1;
+        e.xkey.display = d; e.xkey.window = w; e.xkey.root = DefaultRootWindow(d);
+        e.xkey.same_screen = True; e.xkey.keycode = (unsigned)atoi(argv[2]);
+        for (i = 0; i < count; i++) {
+            e.type = KeyPress; XSendEvent(d, w, False, KeyPressMask, &e); XFlush(d);
+            pause_ms(argc > 4 ? atol(argv[4]) : 30);
+        }
     } else if (!strcmp(argv[1], "click") && argc > 3) {
         e.xbutton.display = d; e.xbutton.window = w; e.xbutton.root = DefaultRootWindow(d);
         e.xbutton.same_screen = True; e.xbutton.button = Button1;

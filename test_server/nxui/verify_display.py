@@ -56,8 +56,9 @@ try:
             # 键位表在**相机那份 libX11** 上也要能全部解析：XF86Reload /
             # XF86Favorites 是机身唯二能到 X11 的 keysym（2026-10-17 实测），
             # 相机 libX11 的 XF86 名字表只有 79 条，名字解析失败会静默丢键。
+            # 2026-11-20 方案 2b 加了 4 条换层键（XF86Mail + keycode 222/223/224）。
             tail = result.stdout.decode(errors="replace")
-            assert "KEYMAP entries=24" in tail, f"键位表条目数不对：\n{tail[-800:]}"
+            assert "KEYMAP entries=28" in tail, f"键位表条目数不对：\n{tail[-800:]}"
             assert "unknown keysym" not in tail, f"有 keysym 解析失败：\n{tail[-800:]}"
             header, shape, depth, pixels = shot.read_bytes().split(b"\n", 3)
             assert header == b"P6" and shape == (b"720 336" if mode == "menu" else b"720 208")

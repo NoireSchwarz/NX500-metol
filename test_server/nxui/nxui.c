@@ -451,12 +451,17 @@ static void poll_child(void) {
  * 所以这里做一张可覆盖的表：默认够用，量到新键就写进 keys.conf，
  * 不必为了一个按键改二进制。 */
 enum { ACT_NONE = 0, ACT_PREV, ACT_NEXT, ACT_OK, ACT_CLOSE, ACT_EDIT, ACT_MIX,
-       ACT_DEL, ACT_MOVE_L, ACT_MOVE_R, ACT_INC, ACT_DEC, ACT_LEFT, ACT_RIGHT };
+       ACT_DEL, ACT_MOVE_L, ACT_MOVE_R, ACT_INC, ACT_DEC, ACT_LEFT, ACT_RIGHT,
+       ACT_SWITCH };
 static const char *const act_names[] = { "none", "prev", "next", "ok", "close",
-    "edit", "mix", "del", "movel", "mover", "inc", "dec", "left", "right" };
+    "edit", "mix", "del", "movel", "mover", "inc", "dec", "left", "right",
+    "switch" };
 /* 24 条不够了：桌面 10 + 机身实测 14，正好卡满，再加一个就静默丢键。 */
-#define KEYMAP_MAX 32
-static struct { KeySym sym; int act; } keymap[KEYMAP_MAX];
+#define KEYMAP_MAX 40
+/* code 非 0 表示按「X keycode」匹配，用来接那些**没有 keysym** 的键：
+ * 相机 X 键位表里 keycode 222/224 后面是空的（NoSymbol），XLookupKeysym
+ * 返回 0，用符号表根本绑不上 —— 而 WiFi 键是 XF86Mail(223)、AEL 紧挨着它。 */
+static struct { KeySym sym; unsigned code; int act; } keymap[KEYMAP_MAX];
 static int keymap_n;
 
 static int action_from_name(const char *s) {
@@ -490,13 +495,26 @@ static KeySym parse_keysym(const char *s) {
  * 取第一个匹配，默认条目排在前面）。act == ACT_NONE 表示解绑 —— keys.conf
  * 里写 `KP_Enter none` 就能把一个键摘掉，采数时正需要这个。 */
 static void keymap_add(const char *name, int act) {
-    KeySym k;
+    KeySym k = NoSymbol;
+    unsigned code = 0;
     int i;
     if (!name || !*name || keymap_n >= KEYMAP_MAX) return;
-    k = parse_keysym(name);
-    if (k == NoSymbol) { fprintf(stderr, "KEYMAP unknown keysym %s\n", name); return; }
+    /* `#222` = 按 X keycode 绑定。相机上有些键没有 keysym（NoSymbol），
+     * 只能这样接；keys.conf 里同样可以写。 */
+    if (name[0] == '#') {
+        const char *p = name + 1;
+        if (!*p) return;
+        for (; *p; p++) {
+            if (*p < '0' || *p > '9') { fprintf(stderr, "KEYMAP bad keycode %s\n", name); return; }
+            code = code * 10u + (unsigned)(*p - '0');
+        }
+        if (!code) { fprintf(stderr, "KEYMAP bad keycode %s\n", name); return; }
+    } else {
+        k = parse_keysym(name);
+        if (k == NoSymbol) { fprintf(stderr, "KEYMAP unknown keysym %s\n", name); return; }
+    }
     for (i = 0; i < keymap_n; i++) {
-        if (keymap[i].sym != k) continue;
+        if (keymap[i].sym != k || keymap[i].code != code) continue;
         if (act == ACT_NONE) {
             memmove(&keymap[i], &keymap[i + 1],
                     (size_t)(keymap_n - i - 1) * sizeof keymap[0]);
@@ -505,7 +523,8 @@ static void keymap_add(const char *name, int act) {
         return;
     }
     if (act == ACT_NONE) return;          /* 本来就没注册，解绑是空操作 */
-    keymap[keymap_n].sym = k; keymap[keymap_n].act = act; keymap_n++;
+    keymap[keymap_n].sym = k; keymap[keymap_n].code = code;
+    keymap[keymap_n].act = act; keymap_n++;
 }
 static void keymap_defaults(void) {
     /* 桌面 / Xvfb 的标准键：只服务于本机回归（verify_display、库管理 UI 测试
@@ -548,6 +567,18 @@ static void keymap_defaults(void) {
     keymap_add("XF86ScrollUp", ACT_INC);     /* 右上拨盘 → */
     keymap_add("XF86Reload", ACT_PREV);      /* 10-17 采到过，留兼容 */
     keymap_add("XF86Favorites", ACT_NEXT);
+
+    /* ★ 2026-11-20 方案 2b：滤镜页里「单击 WiFi 或 AEL」= 换层。
+     * 依据是相机自己的 X 键位表（`xmodmap -pke` 实测）：
+     *   keycode 223 = XF86Mail     ← WiFi 键（evdev 215 + 8，EV_MOBILE.sh 同源）
+     *   keycode 222/224 = 无 keysym（表里是空的）
+     * AEL 与 MOBILE 在 keyscan 的名字表里相邻，所以它只可能是 214 或 216
+     * （+8 → 222 / 224）。两个都绑上，实测哪一个都不吃亏；这两个键号在
+     * 面板里本来就没有别的含义。keys.conf 里可以改成任何 `#<code>`。 */
+    keymap_add("XF86Mail", ACT_SWITCH);   /* WiFi（有 keysym，按名字绑） */
+    keymap_add("#223", ACT_SWITCH);       /* 同一个键，按 keycode 兜底 */
+    keymap_add("#222", ACT_SWITCH);       /* AEL 候选 1 */
+    keymap_add("#224", ACT_SWITCH);       /* AEL 候选 2 */
 }
 static void keymap_load(void) {
     char path[256], line[160], name[64], act[32];
@@ -564,9 +595,13 @@ static void keymap_load(void) {
     fclose(f);
     fprintf(stderr, "KEYMAP conf=%s entries=%d\n", path, keymap_n);
 }
-static int keymap_action(KeySym k) {
+/* 先按 keycode 找（没有 keysym 的键只能这样接），再按 keysym 找。 */
+static int keymap_action(KeySym k, unsigned code) {
     int i;
-    for (i = 0; i < keymap_n; i++) if (keymap[i].sym == k) return keymap[i].act;
+    for (i = 0; i < keymap_n; i++)
+        if (keymap[i].code && keymap[i].code == code) return keymap[i].act;
+    for (i = 0; i < keymap_n; i++)
+        if (!keymap[i].code && keymap[i].sym == k) return keymap[i].act;
     return ACT_NONE;
 }
 static void logline(const char *s) {
@@ -776,6 +811,16 @@ static void bump_strength(int delta) {
 static void do_action(int act) {
     if (act == ACT_NONE) return;
     if (act == ACT_CLOSE) { queue.close_requested = 1; return; }
+    /* 换层键在菜单页也认：菜单 → 进 LUT 层（入口语义不变，只是少按一次）。
+     * 它必须在 `if (menu) return` 之前 —— 否则在菜单页按 WiFi 什么都不会发生。 */
+    if (act == ACT_SWITCH) {
+        if (menu) {
+            snprintf(return_menu, sizeof return_menu, "%s", menu_path);
+            menu = 0; set_layer(L_LUT); resize_panel();
+        } else set_layer(lut_mode ? L_PW : L_LUT);
+        dirty = 1;
+        return;
+    }
     if (menu) return;                 /* 菜单模式不抢按键，行为与旧版一致 */
     switch (act) {
     case ACT_PREV: choose(selected - 1); break;
@@ -1664,7 +1709,7 @@ int main(int argc, char **argv) {
                              event.xkey.keycode, event.xkey.state);
                     logline(b);
                 }
-                do_action(keymap_action(key));
+                do_action(keymap_action(key, event.xkey.keycode));
             }
             /* 采数时按钮事件也要记：机身转盘有可能以 X 的滚轮形式（button 4/5）
              * 到达，只记 KeyPress 会把它整条漏掉。触摸的 tap 也会落这里，但
