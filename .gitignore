@@ -109,6 +109,9 @@ test_server/dicam/*.elf
 /raw8/emmcbak/*
 !/raw8/emmcbak/MANIFEST.txt
 !/raw8/emmcbak/p12_pristine.bin
+# 2026-11-21：分区基线（md5 索引）与官方分区表（/etc/parttab 原样）——纯文本判据，正是"丢了能不能补"的依据
+!/raw8/emmcbak/BASELINE.md5
+!/raw8/emmcbak/parttab.txt
 
 
 # 2026-10-06：逆向产物里不该入库的
