@@ -166,7 +166,7 @@ reload_driver() {
     cfg=/lib/modules/cfg80211.ko
   fi
   [ -f "$cfg" ] || { log "reload: missing $cfg"; return 1; }
-  /sbin/insmod "$cfg" ieee11_regdom=CN >>"$LOG" 2>&1 || return 2
+  /sbin/insmod "$cfg" ieee80211_regdom=CN >>"$LOG" 2>&1 || return 2
   /sbin/insmod /lib/modules/mlan.ko >>"$LOG" 2>&1 || return 3
   /sbin/insmod /lib/modules/sd8xxx.ko \
     cfg80211_wext=15 \
@@ -353,7 +353,16 @@ case "${1:-status}" in
 
     reload_driver 1
     rc=$?
-    [ "$rc" -eq 0 ] || die "DRIVER_RELOAD_FAILED rc=$rc（可试 nxwifi.sh sta24 回 2.4G）" 3
+    if [ "$rc" -ne 0 ]; then
+      # 别把半截状态留给人：band word 归零 + 原厂驱动重载，尽力恢复 2.4G
+      log "sta5g: reload failed rc=$rc, rolling back to 2.4G"
+      $BB devmem 0x85440068 32 0 >>"$LOG" 2>&1
+      reload_driver 0 >>"$LOG" 2>&1
+      killall wpa_supplicant >>"$LOG" 2>&1
+      sleep 4
+      wait_sta_ip 40 >/dev/null
+      die "DRIVER_RELOAD_FAILED rc=$rc（已自动回滚 2.4G；若仍断网请按机身 WiFi 键）" 3
+    fi
 
     # wpa_supplicant 丢接口后不一定会自己重连，杀掉让 connmand 重新拉起
     killall wpa_supplicant >>"$LOG" 2>&1
