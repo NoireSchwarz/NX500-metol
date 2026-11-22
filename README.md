@@ -209,15 +209,19 @@ sh /opt/usr/nx-ks/nxui.sh diag       # 面板能不能用，一次看全
 
 1. 相机菜单 → 系统设置 → **相机热点** → 选 **5 GHz** 或 **2.4 GHz**；
 2. 等十几秒，相机会断开原来的 WiFi、自己变成一个热点；
-3. 手机 WiFi 列表里找相机的热点名，连上（密码是机身上「移动 AP」里设定的那个，
-   相机没有这个设置项时用默认值）；
-4. 手机浏览器打开 `http://192.168.49.1/`（热点模式下相机的固定地址）。
+3. 热点起来后**屏幕上会弹一次 `[ http://192.168.x.x/ ]`**，记下这个地址；
+4. 手机 WiFi 列表里找相机的热点名，连上（密码就是机身上「移动 AP」里设的那个）；
+5. 手机浏览器打开第 3 步那个地址。
 
 不想用了：同一页点 **关闭热点**，相机恢复原来的 WiFi 连接。
 
-> 现状：A 已实测可用。B 的代码链路完整（基线检查 → 频段使能字 → 换 cfg80211 模块 →
-> 劫持 hostapd），但原厂 `mobileap-agent` 没有被拉起时热点起不来，见
-> `docs/current/MIGRATION_FROM_NXSCHWARZ_2026-11-22.md`。局域网那条不受影响。
+> 现状：A、B 两条都已实测可用（B 在 2026-11-22 由机主验证，5 GHz）。
+>
+> B 能通的关键是原厂 `mobileap-agent` 必须活着 —— 它由 system bus 上的
+> `org.tizen.tethering` 激活（服务定义在 `/usr/share/dbus-1/services/`，
+> 而 `/etc/dbus-1/system.conf` 的 `servicedir` 正指向那里）。`nxwifi.sh` 会在起热点前
+> 自动 ping 一次把它拉起来，正常情况下不用手动干预；如果热点迟迟不起，
+> 看 `/mnt/mmc/nx-ks/wifi.log` 里有没有 `tethering activation FAILED`。
 
 ### 分辨率映射
 

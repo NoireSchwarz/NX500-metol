@@ -107,9 +107,53 @@ preflight() {
   return 0
 }
 
+# 热点起来后没人知道该连哪儿 —— 屏幕上弹一次地址，手机照着敲/扫。
+# ★ 原厂 mobileap-agent 没跑时，hostapd 永远不会被调起 ⇒ 热点起不来（2026-11-22 实证）。
+#   它由 system bus 上的 org.tizen.tethering 激活：服务定义在
+#   /usr/share/dbus-1/services/，而 /etc/dbus-1/system.conf 的 <servicedir> 正指向那里。
+#   所以「发一条 Ping」就能把它拉起来 —— 任何方法调用都会触发 dbus 激活。
+ensure_tethering() {
+  if ps 2>/dev/null | grep -q "[m]obileap-agent"; then
+    log "tethering already running"
+    return 0
+  fi
+  [ -x /usr/bin/dbus-send ] || return 1
+  log "tethering not running, activating org.tizen.tethering"
+  /usr/bin/dbus-send --system --print-reply --dest=org.tizen.tethering \
+      / org.freedesktop.DBus.Peer.Ping >>"$LOG" 2>&1
+  i=0
+  while [ "$i" -lt 20 ]; do
+    ps 2>/dev/null | grep -q "[m]obileap-agent" && { log "tethering activated"; return 0; }
+    sleep 0.5
+    i=$((i+1))
+  done
+  log "tethering activation FAILED"
+  return 1
+}
+
+hotspot_notice() {
+  label=$1
+  hip=$(uap_ip)
+  if [ -z "$hip" ] && [ -n "${SRV:-}" ] && [ -x "$SRV" ]; then
+    hip=$("$SRV" --status 2>/dev/null | sed -n 's/^ip=//p' | head -1)
+  fi
+  if [ -z "$hip" ]; then
+    say "HOTSPOT_UP_NO_IP $label（热点已起但 uap0 暂无地址，等几秒再点一次相册地址）"
+    log "hotspot up $label but no uap0 ip"
+    return 0
+  fi
+  say "HOTSPOT_UP $label url=http://$hip/"
+  log "hotspot up $label url=http://$hip/"
+  if [ -x "$POPUP" ]; then
+    "$POPUP" " [ http://$hip/ ] " 10 2>/dev/null &
+  fi
+  return 0
+}
+
 case "${1:-status}" in
   start24)
     preflight
+    ensure_tethering || log "start24: tethering not activated, hotspot may fail"
     ip=$(uap_ip)
     if [ -n "$ip" ]; then
       say "ALREADY_UP ip=$ip ssid=$(uap_ssid)"
@@ -123,7 +167,7 @@ case "${1:-status}" in
       rc=$?
       printf '%s\n' "$out" >>"$LOG"
       case "$out" in
-        *connected=1*) say "$out"; exit 0 ;;
+        *connected=1*) say "$out"; hotspot_notice "2.4GHz"; exit 0 ;;
       esac
       say "$out"
       log "start24 server rc=$rc"
@@ -142,6 +186,7 @@ case "${1:-status}" in
     if [ -n "$ip" ]; then
       say "HOTSPOT_UP ip=$ip ssid=$(uap_ssid) password=UNKNOWN(st-fallback)"
       log "start24 up (fallback) ip=$ip st_rc=$rc"
+      [ -x "$POPUP" ] && "$POPUP" " [ http://$ip/ ] " 10 2>/dev/null &
       exit 0
     fi
     say "HOTSPOT_START_PENDING st_rc=$rc (无 uap0 地址，原厂可能仍在启动或机身设置里未启用移动 AP)"
@@ -234,6 +279,7 @@ case "${1:-status}" in
     preflight
     [ -x "$RADIO" ] || die "RADIO_MISSING $RADIO" 1
     ensure_nxl_layout || die "NXL_LAYOUT_FAILED $NXL_DIR" 1
+    ensure_tethering || log "start5g: tethering not activated, hotspot may fail"
     # ★ radio 用 live_identity() 比对 /proc/<pid>/exe == /opt/usr/nx-lut-lite/bin/nxl-wifi-radio。
     #   从 $D 调起来 exe 是另一个路径，守护进程会判定 AP_LEASE_LOST（2026-11-22 实测）。
     SRV=$NXL_DIR/bin/nxl-wifi-server
@@ -275,6 +321,7 @@ case "${1:-status}" in
     fi
     say "$out"
     log "start5g ok"
+    hotspot_notice "5GHz"
     exit 0
     ;;
   *)

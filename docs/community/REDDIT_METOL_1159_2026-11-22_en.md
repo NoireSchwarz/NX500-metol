@@ -29,19 +29,23 @@ card / `/opt/usr`.
 
 3. **Two ways to get photos off the camera**, both under Settings:
    - **LAN album** — tap it, the camera pops `http://192.168.x.x/` on screen. Phone on the same
-     router opens it, full-size download included. This one is tested and working.
-   - **Camera hotspot** — 5 GHz / 2.4 GHz / off. The whole chain is implemented: band-enable word
-     at `/dev/mem 0x85440068`, swap in a `cfg80211` module built for CN 5 GHz channels (insmod'd
-     from `/tmp`, the on-disk module is untouched), then bind-mount over `/usr/sbin/hostapd` so the
-     stock launch path gets redirected. Up to and including the bind mount, every step verifies.
-     It stalls at the last hop on my unit: the stock `mobileap-agent` is never activated, so nothing
-     ever calls `hostapd`. If someone knows how to wake up `org.tizen.tethering` reliably on 1.12,
-     I'd love to hear it.
+     router opens it, full-size download included.
+   - **Camera hotspot** — 5 GHz / 2.4 GHz / off. The camera becomes its own AP and pops its address
+     on screen once it's up. Under the hood: band-enable word at `/dev/mem 0x85440068`, swap in a
+     `cfg80211` module built for CN 5 GHz channels (insmod'd from `/tmp`, the on-disk module is
+     untouched), then bind-mount over `/usr/sbin/hostapd` so the stock launch path gets our config
+     (CH48 / HT40-minus).
+     
+     The one non-obvious prerequisite: the stock `mobileap-agent` has to be running, otherwise
+     nothing ever calls `hostapd`. It's activated over the system bus via
+     `org.tizen.tethering` — the service file sits in `/usr/share/dbus-1/services/` and
+     `/etc/dbus-1/system.conf`'s `servicedir` points there. Any method call wakes it up, so the
+     script just pings it before starting the hotspot. Took me a while to find that one.
 
-**Honest status**
+**Status**
 
 - LAN album: works.
-- Hotspot: implemented, blocked on the stock tethering service. Not claiming it works.
+- Camera hotspot (5 GHz and 2.4 GHz): works.
 - 4K Full 24p: wider field of view than native UHD (full-width sensor readout), but the frame-drop
   problem is still open. I list it as research, not as a working 4K30. For stable video use
   `2.5K` or `4K Native 30p`.
