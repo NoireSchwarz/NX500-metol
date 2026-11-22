@@ -102,7 +102,48 @@ die() { echo "ERR $*"; exit 1; }
 # 没装 pwrlog.sh 就静默跳过，绝不因为日志影响 apply。
 plog() {
     [ -x "$D/pwrlog.sh" ] || return 0
-    sh "$D/pwrlog.sh" note "LUT $*" >/dev/null 2>&1 || :
+    # 8>&-：pwrlog 的 boot/start 会 setsid 常驻，别让它继承 LUT 锁
+    sh "$D/pwrlog.sh" note "LUT $*" >/dev/null 2>&1 8>&- || :
+}
+
+# ---------- 分段计时（NX_TIMING=1 才输出；默认零开销） ----------
+# 为什么需要：apply/off 的端到端耗时能从 nxui 日志的 elapsed_ms 看到，但
+# 「写槽 / 三张登记表 / 指针表 / kick / watcher」各占多少没有数据。
+# 要判断"首次启用与后续换表能否拆开"，必须先有这张分段表。
+# read 是 busybox 内建（不 fork），这里只有算术，对正常路径影响可忽略。
+_tm_ms() {
+    read -r _tm_up _ < /proc/uptime 2>/dev/null || { TM_NOW=0; return 1; }
+    _tm_i=${_tm_up%.*}; _tm_raw=${_tm_up#*.}
+    [ "$_tm_raw" = "$_tm_up" ] && _tm_raw=0
+    [ -n "$_tm_i" ] || _tm_i=0
+    # ★ 必须先记位数再去前导零：.05 的 n=2，去零后只剩 "5"。
+    # ★ 更关键的是去零本身：$((09)) 在 POSIX sh 里是八进制字面量，
+    #   会报 "Illegal number" 并让整个脚本退出 —— uptime 里 .05/.08 很常见。
+    _tm_n=${#_tm_raw}
+    _tm_f=$_tm_raw
+    while :; do
+        _tm_t=${_tm_f#0}
+        [ "$_tm_t" = "$_tm_f" ] && break
+        _tm_f=$_tm_t
+    done
+    [ -n "$_tm_f" ] || _tm_f=0
+    case "$_tm_n" in
+        1) _tm_f=$((_tm_f * 100)) ;;
+        2) _tm_f=$((_tm_f * 10)) ;;
+        3) ;;
+        *) _tm_f=0 ;;
+    esac
+    TM_NOW=$((_tm_i * 1000 + _tm_f))
+    return 0
+}
+tm() {
+    [ "${NX_TIMING:-0}" = 1 ] || return 0
+    _tm_ms || return 0
+    [ -n "${TM_T0:-}" ] || TM_T0=$TM_NOW
+    printf 'TIMING %-10s +%dms  total=%dms\n' \
+        "$1" "$((TM_NOW - ${TM_LAST:-$TM_T0}))" "$((TM_NOW - TM_T0))" >&2
+    TM_LAST=$TM_NOW
+    return 0
 }
 
 need_tools() {
@@ -290,23 +331,28 @@ kick_current() {
 commit_table() {
     label=$1
     table=$2
+    tm "enter"
     # 先记"开始"：若日志里只有 start 没有同名的 apply 收尾，就说明断电发生在写表途中。
     plog "apply start $label"
     $BB mkdir -p "$ST" "$PD"
+    tm "plog"
 
     # 关屏幕色彩（理由见 oled_save 注释）。放在写槽之前，保证生效那一刻起 ISP
     # 只受 LUT 一层影响。
     oled_save
     oled_put 0
+    tm "oled"
 
     # 首次进入时若未备份，先建立本次会话的还原点（不写 LUT）
     if [ ! -f "$ST/ready" ]; then
         sh "$0" begin || die "backup failed"
     fi
+    tm "begin"
 
     "$SLOTW" write "$SLOT" "$table" > "$ST/write.log" 2>&1 \
         || { cat "$ST/write.log"; die "slot write failed"; }
     $BB grep -q 'READBACK ok' "$ST/write.log" || { cat "$ST/write.log"; die "slot write not verified"; }
+    tm "slotwrite"
 
     # View4 四项一次写全（色彩空间 × 屏幕色彩 四种组合都会命中）：
     #   [0] A12 AdobeRGB+开   [1] A13 sRGB+开
@@ -314,6 +360,7 @@ commit_table() {
     # 只写 [1]/[3] 会让 AdobeRGB 下取景仍是原厂表。
     "$REGT" view-set "$SLOT" > "$ST/view.log" 2>&1 || { cat "$ST/view.log"; die "view registry write failed (stale nx_regtabwrite.arm?)"; }
     $BB grep -q 'READBACK ok' "$ST/view.log" || { cat "$ST/view.log"; die "view registry write not verified"; }
+    tm "view"
     # Still（成片）有两条互斥的选表分支（p7 0x80382B30）：
     #   +0x21 == 1（屏幕色彩开启）→ BV12 十二项
     #   否则                        → Still6 六项
@@ -325,12 +372,14 @@ commit_table() {
         "$REGT" still-set  "$SLOT" > "$ST/still.log" 2>&1
     fi
     $BB grep -q 'READBACK ok' "$ST/still.log" || { cat "$ST/still.log"; die "still6 registry write failed"; }
+    tm "still"
     if [ -f "$BVBAK" ]; then
         "$REGT" bv-write "$SLOT" > "$ST/bv.log" 2>&1
     else
         "$REGT" bv-set  "$SLOT" > "$ST/bv.log" 2>&1
     fi
     $BB grep -q 'READBACK ok' "$ST/bv.log" || { cat "$ST/bv.log"; die "bv12 registry write failed (stale nx_regtabwrite.arm?)"; }
+    tm "bv"
 
     # ★ 秒切：登记表写完后立刻让 ISP 重读槽，不再要求用户半按快门。
     #   历史结论「reload 是禁区」针对的是"裸写 +0x00c + 脉冲"——那种写法漏了
@@ -347,23 +396,75 @@ commit_table() {
         fi
     fi
     # 秒切放在起 watcher 之前：watcher 的录像补载会抢同一把 nx_lutload 锁。
+    tm "lutptr"
     kick_slot "$SLOT"
+    tm "kick"
     # Applying a look is the one user-facing switch for photo and video LUTs.
     # The watcher is per-boot and stops with LUT off; no second UI entry needed.
     if [ -x "$D/lut_video.sh" ]; then
-        sh "$D/lut_video.sh" on 0 > "$ST/video.log" 2>&1 || {
+        # 8>&-：不让常驻 watcher 继承 LUT 锁的 fd（见 lut_lock 注释）
+        sh "$D/lut_video.sh" on 0 > "$ST/video.log" 2>&1 8>&- || {
             cat "$ST/video.log"
             die "LUT applied, but video auto-load could not start"
         }
     fi
+    tm "video"
     echo "OK applied $label"
     plog "apply $label"
 }
 
+# ---------- 写操作全局互斥 ----------
+# ★ 2026-11-22：原来只有 list/fav/move/index/del 走 library.lock，
+#   apply/off/begin/mix/strength/blend 全裸。两路并发（面板点一下 + 命令行，
+#   或 apply 还没结束时又点一次）会同时写 A18、改三张登记表、交叉 kick；
+#   最糟的是 begin 在并发下把【已被改过的 A18】当成原厂存进还原点，
+#   之后「还原原厂」永远回不去，且不会自愈。
+#
+#   重入：apply -> commit_table -> `sh $0 begin` -> `sh $0 off`，
+#   子进程必须继承锁而不是重新申请，否则自死锁。用 LUT_LOCKED 传递。
+#
+#   ★ fd 8 会被子进程继承。lut_video.sh 启动的 watcher 是常驻进程，
+#   它若拿着锁不放，之后所有 LUT 操作都会卡住 —— 调用处一律加 8>&-。
+lut_lock() {
+    [ "${LUT_LOCKED:-0}" = 1 ] && return 0
+    [ -d "$ST" ] || $BB mkdir -p "$ST" 2>/dev/null || return 1
+    [ -e "$ST/lut.lock" ] || : > "$ST/lut.lock" 2>/dev/null || return 1
+    exec 8>"$ST/lut.lock" || return 1
+    _lk=0
+    while ! $BB flock -n 8; do
+        _lk=$((_lk + 1))
+        # 40 x 0.25s = 10s。面板点一下最多等这么久，再等就该报错而不是挂住。
+        [ "$_lk" -le 40 ] || return 1
+        $BB usleep 250000 2>/dev/null || $BB sleep 1
+    done
+    LUT_LOCKED=1
+    export LUT_LOCKED
+    return 0
+}
+
+# 非阻塞版本：拿不到就立刻返回，不含等待。
+# 给 list 用 —— 面板每次启动都会调它，不能为列个表去等一把可能被
+# apply 持有 30s 的锁。
+lut_lock_try() {
+    [ "${LUT_LOCKED:-0}" = 1 ] && return 0
+    [ -d "$ST" ] || $BB mkdir -p "$ST" 2>/dev/null || return 1
+    [ -e "$ST/lut.lock" ] || : > "$ST/lut.lock" 2>/dev/null || return 1
+    exec 8>"$ST/lut.lock" || return 1
+    $BB flock -n 8 || return 1
+    LUT_LOCKED=1
+    export LUT_LOCKED
+    return 0
+}
+
 case "${1:-status}" in
-list|fav|move|index|del)
-    exec 8>"$ST/library.lock" || die "cannot open library lock"
-    $BB flock -x 8 || die "cannot lock library"
+list)
+    # 只读动词：拿到锁就顺手维护 order；拿不到就按现有 order 输出。
+    # 两个都写 order（fav/move/del）的进程互斥，但读的一方不阻塞。
+    LUT_LIST_UNLOCKED=0
+    lut_lock_try || LUT_LIST_UNLOCKED=1
+    ;;
+fav|move|index|del|apply|begin|off|mix|strength|blend|prune)
+    lut_lock || die "another LUT operation is in progress (lock: $ST/lut.lock)"
     ;;
 esac
 
@@ -388,7 +489,13 @@ list)
         exit 0
     fi
     [ -d "$LAB" ] || die "no $LAB"
-    order_sync || die "cannot update order"
+    if [ "${LUT_LIST_UNLOCKED:-0}" = 1 ]; then
+        # 另一个 LUT 操作在跑：不重建 order（重建要写盘），直接按现有内容输出。
+        # 已下架条目的残留留给下一次拿到锁的 list/index 清理。
+        :
+    else
+        order_sync || die "cannot update order"
+    fi
     only_fav=0
     [ "${2:-}" = "--fav" ] && only_fav=1
     # order 文件在空库时会被 order_sync 删掉（空库没有顺序可言），
@@ -466,6 +573,9 @@ del)
     $BB mkdir -p "$TRASH"
     for ext in cube bin; do
         if [ -f "$LAB/$name.$ext" ]; then
+            # exFAT 上「rename 覆盖已存在目标」每次留一个悬空目录项
+            # （nxstore.sh 开头那 556 个 order-N 就是这笔账）。先删目标再改名。
+            $BB rm -f "$TRASH/$name.$ext" 2>/dev/null
             $BB mv -f "$LAB/$name.$ext" "$TRASH/$name.$ext" || die "cannot move $name.$ext"
             moved="$moved $name.$ext"
         fi
@@ -677,6 +787,8 @@ prune)
             continue
         fi
         $BB mkdir -p "$TRASH" || die "cannot create $TRASH"
+        # 同 del：先删目标，避免 exFAT 上的覆盖式 rename 留下悬空目录项
+        $BB rm -f "$TRASH/$name" 2>/dev/null
         if $BB mv -f "$LAB/$name" "$TRASH/$name"; then
             echo "MOVED $name"
             moved=$((moved + 1))
@@ -717,13 +829,16 @@ off)
         fi
     done
     need_tools
+    tm "enter"
     if [ -x "$D/lut_video.sh" ]; then
-        sh "$D/lut_video.sh" off || die "could not stop video LUT watcher"
+        sh "$D/lut_video.sh" off 8>&- || die "could not stop video LUT watcher"
     fi
+    tm "videostop"
     # 指针表先于登记表恢复：让 p7 的档位选择回到内置表，再还原 View4/Still6/A18
     if [ -x "$D/lut/nx_lutptr.arm" ] && [ -f "$ST/lutptr.bak" ]; then
         "$D/lut/nx_lutptr.arm" restore "$ST/lutptr.bak" > "$ST/off-lutptr.log" 2>&1 || true
     fi
+    tm "lutptr"
     # 真的没事可做 = 没有还原点，也没有正在生效的 look。只要有 current，
     # 内存里就确实挂着一张 LUT，不能因为还原点丢了就假装完成。
     if [ ! -f "$ST/a18_orig.bin" ] && [ ! -f "$ST/current" ]; then
@@ -733,12 +848,15 @@ off)
     rc=0
     # View4 四项写回原厂（[0]A12 [1]A13 [2]A14 [3]A17）
     "$REGT" view-restore > "$ST/off-view.log" 2>&1 || rc=1
+    tm "view"
     if [ -f "$STILLBAK" ]; then
         "$REGT" still-restore > "$ST/off-still.log" 2>&1 || rc=1
     fi
+    tm "still"
     if [ -f "$BVBAK" ]; then
         "$REGT" bv-restore > "$ST/off-bv.log" 2>&1 || rc=1
     fi
+    tm "bv"
     # A18 写回源：优先本次会话 dump 的还原点，它坏了退到随包原厂基线。
     # 0 字节的还原点以前只打一句 WARN 就跳过 —— 用户若不重启相机，A18 里
     # 躺的还是那张 LUT，面板却报「已还原原厂表」，等于说谎。
@@ -756,6 +874,7 @@ off)
         # 连随包基线都没有（安装缺件）。登记表已还原，A18 这一格等重启复原。
         echo "WARN no usable A18 restore point (session dump and package baseline both missing); A18 stays loaded until reboot" > "$ST/off-slot.log"
     fi
+    tm "slot"
     if [ $rc -ne 0 ]; then
         # 日志平时在 tmpfs（不写卡），但失败必须留下能带走的证据：
         # 这次 0 字节事故就是因为现场日志全在 /tmp，重启后一无所获。
@@ -771,7 +890,9 @@ off)
     #   盲目 kick A18 会把画面留在"原厂 A18"而不是 p7 认定的那一档。
     $BB rm -f "$ST/ready" "$ST/current" "$ST/keep"
     oled_restore
+    tm "oled"
     kick_current
+    tm "kick"
     case "$A18HOW" in
         session) _a18="A18=original" ;;
         factory) _a18="A18=factory baseline" ;;

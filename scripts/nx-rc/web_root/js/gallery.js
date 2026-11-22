@@ -91,7 +91,16 @@ function Gallery(controllers) {
     this.downloading = false;// 批量下载进行中
     this._obs = null;        // IntersectionObserver(图片)
     this._loadQueue = [];    // 待发起的缩略图请求队列(限流)
-    this._loading = 0;       // 已发起未完成的数量
+    /* 在飞请求用「票据表」而不是计数器：token -> img。
+     * 2026-11-22：计数器只靠 load/error 回落，而"取消"（滚出视口、收起目录、
+     * 重进相册）会 removeAttribute('src') 让浏览器丢弃请求 —— 多数情况下不派发
+     * 事件，于是计数永久泄漏；一旦泄漏到 MAX_CONCURRENT，整个网格再也不发请求。
+     * 票据表让每次请求都能被主动结算，且结算幂等。 */
+    this._inflight = {};     // token -> img（在飞）
+    this._inflightCount = 0; // 在飞数量（= 键数，避免每次 Object.keys）
+    this._thumbSeq = 0;      // 票据递增号
+    this._gen = 0;           // 相册代际：init/切相机时 +1，旧回调据此丢弃
+    this._loading = 0;       // 兼容旧字段，仅镜像 _inflightCount
     this._dirLoading = 0;    // 正在抓取中的目录数(限制目录请求并发)
     this._treeCache = null;  // 目录树缓存 {rootUrl, ts, groups:[...]}
     this._builtAt = 0;       // 上次成功构建视图的时间
@@ -109,6 +118,9 @@ Gallery.prototype.init = function (url, opts) {
         url = 'http://' + app.hostname + '/DCIM';
     }
     self.rootUrl = url;
+    /* 代际号：切相机、挂载缓存、强制刷新都会走到这里。晚到的目录回调据此丢弃，
+     * 否则旧相机的目录内容会被追加到已经重建的 DOM 里。 */
+    self._gen++;
     var force = !!(opts && opts.force);
 
     // 缓存命中:直接用已抓到的目录/文件数据重建视图(免一次整树抓取)
@@ -142,7 +154,9 @@ Gallery.prototype.init = function (url, opts) {
  * 不再递归全量抓取 —— 这是"目录多时相册慢"的根治点。 */
 Gallery.prototype.fetchRootTree = function (rootUrl) {
     var self = this;
+    var gen = self._gen;
     self.fetchDir(rootUrl).then(function (res) {
+        if (self._gen !== gen) { return; }   // 期间切过相机/刷新过：结果作废
         var $g = $('#gallery');
         $g.find('.gallery-loading').remove();
 
@@ -189,6 +203,7 @@ Gallery.prototype.fetchRootTree = function (rootUrl) {
             self.toggleDir(self.groups[j].name, true);
         }
     }, function () {
+        if (self._gen !== gen) { return; }
         self.rootFailed = true;
         var $g = $('#gallery');
         $g.find('.gallery-loading').remove();
@@ -292,6 +307,10 @@ Gallery.prototype.toggleDir = function (name, forceExpand) {
         $grid.show();
     } else {
         // 收起:释放网格内缩略图,节省解码内存
+        // 同时取消还在排队的目录请求 —— 否则收起后它仍会占一个并发位，
+        // 回来时把结果写进已经隐藏的网格（用户看到"点开没内容，等一下又冒出来"）。
+        if (g._pollId) { clearInterval(g._pollId); g._pollId = null; }
+        g.loading = false;
         $sec.find('.gallery-dir-arrow').html('&#9654;');
         self.releaseGridThumbs($grid);
         $grid.hide();
@@ -302,31 +321,45 @@ Gallery.prototype.toggleDir = function (name, forceExpand) {
 /* 抓取目录文件列表并渲染网格 */
 Gallery.prototype.loadDir = function (g, $sec) {
     var self = this;
+    var gen = self._gen;
     g.loading = true;
     $sec.find('.gallery-dir-arrow').html('&#9660;');
     $sec.find('.gallery-dir-meta').html(
         '<span class="gallery-dir-spinner"></span> 读取中');
     $sec.find('.gallery-grid').show();
 
-    // 限制目录请求并发:超过 DIR_CONCURRENCY 时排队等前面的完成
-    var timer = null;
+    /* 限流：超过 DIR_CONCURRENCY 时排队等前面的完成。
+     * 句柄挂在目录组上（g._pollId），收起目录/重进相册/切相机时可以真正取消。
+     * 原来这里是局部的 `var timer`，从未赋值，`clearTimeout(timer)` 是死代码 ——
+     * 排队中的目录在界面已经被拆掉之后仍会发出请求，并把结果写进新的 DOM。 */
     var poll = setInterval(function () {
+        if (self._gen !== gen) { clearInterval(poll); g._pollId = null; return; }
         if (self._dirLoading < Gallery.DIR_CONCURRENCY) {
             clearInterval(poll);
-            if (timer) { clearTimeout(timer); }
+            g._pollId = null;
             self._dirLoading++;
             self.fetchDir(g.url).then(function (res) {
+                /* ★ 2026-11-22 P1：归属必须先判断，再改状态。
+                 * 切走/重进时 startRender 会把 _dirLoading 归零，而 groups 是
+                 * _treeCache.groups 的对象引用（同一个 g 被复用）。
+                 * 旧请求若先减计数，扣掉的是新请求刚占的名额（Math.max 只防负数，
+                 * 防不了并发超限）；若先清 g.loading，会把新请求的"加载中"抹掉，
+                 * 点击被重新放开 ⇒ 同一目录被重复请求。
+                 * 本代已被重置，旧请求的槽位也随之作废，它不该再碰任何状态。 */
+                if (self._gen !== gen) { return; }
+                self._dirLoading = Math.max(0, self._dirLoading - 1);
                 g.loading = false;
-                self._dirLoading--;
                 self.buildDirGrid(g, res.files);
             }, function () {
+                if (self._gen !== gen) { return; }
+                self._dirLoading = Math.max(0, self._dirLoading - 1);
                 g.loading = false;
-                self._dirLoading--;
                 $sec.find('.gallery-dir-meta').text('读取失败(点击重试)');
                 $sec.find('.gallery-dir-arrow').html('&#9654;');
             });
         }
     }, 80);
+    g._pollId = poll;
 };
 
 /* 把抓到的文件列表构建为网格(文件最新在前) */
@@ -383,9 +416,11 @@ Gallery.prototype.releaseGridThumbs = function ($grid) {
     var i;
     for (i = 0; i < imgs.length; i++) {
         var el = imgs[i];
-        self.dequeueThumb(el);
+        // 排队中/在飞的请求在这里主动结算，不依赖浏览器的 load/error
+        self.cancelThumb(el);
+        el._state = 'idle';
         el._loaded = false;
-        el._queued = false;
+        el._cancelled = true;
         if (el.getAttribute('src')) {
             el.removeAttribute('src');
         }
@@ -415,6 +450,14 @@ Gallery.prototype.mountFromCache = function () {
     for (i = 0; i < self.groups.length; i++) {
         var g = self.groups[i];
         if (!g.loaded) {
+            /* ★ 2026-11-22 P1：缓存里可能有「加载到一半」的目录。
+             * 切出再切回时旧的 poll 只会因代际不符而 clearInterval + 清 _pollId，
+             * **不会清 g.loading**；而本函数又 continue 跳过它。
+             * 结果 g.loading 永远为 true，点击在 toggleDir 里被 `if (g.loading) return` 拦住，
+             * 这个目录从此打不开（实测：loading=true、poll=null）。
+             * 缓存只保留已完成的数据；未完成的目录把请求态重置，等用户再点时重新加载。 */
+            if (g._pollId) { clearInterval(g._pollId); g._pollId = null; }
+            g.loading = false;
             continue;
         }
         var $sec = $('.gallery-section[data-dir="' + self.escAttr(g.name) + '"]');
@@ -473,8 +516,20 @@ Gallery.prototype.fetchDirJson = function (url) {
             reject(new Error('not a DCIM url: ' + url));
             return;
         }
-        var host = app.hostname || self.rootUrl &&
-                   self.rootUrl.replace(/^https?:\/\//, '').split(':')[0].split('/')[0];
+        /* host 必须从被请求的 url 推导，不能用 app.hostname。
+         * app.hostname 是页面加载时的值；切相机时 app.js 只改 gallery.rootUrl，
+         * 于是目录清单一直打旧相机，而缩略图 URL 由 file.url 的 host 生成 ——
+         * 清单来自 A 相机、图片来自 B 相机，两边的文件名对不上。 */
+        var host = '';
+        try {
+            host = new URL(url).hostname;
+        } catch (e) {
+            host = app.hostname || '';
+        }
+        if (!host) {
+            reject(new Error('cannot resolve host for ' + url));
+            return;
+        }
         $.ajax({
             url: 'http://' + host + ':' + Gallery.DIRLIST.port +
                  '/cgi-bin/dirlist?p=' + encodeURIComponent(rel),
@@ -631,23 +686,39 @@ Gallery.prototype.buildItem = function (item) {
             $img.attr('src', thumb).attr('loading', 'lazy');
         }
         $img.on('error', function () {
-            var $i = $(this);
+            var img = this;
+            var $i = $(img);
+            /* 主动取消（滚出视口/收起目录/重进相册）之后浏览器仍可能补发一次
+             * error。那不是真实失败：不能触发重试，也不能再动计数。 */
+            if (img._cancelled) { return; }
             var n = $i.data('retry') || 0;
             if (n < Gallery.THUMB_RETRY) {
                 // 相机端冷生成时偶发返回空 body(convert 还没写完 CGI 就收尾),
                 // 此时缓存其实已经生成好,重试一次基本必中 —— 不要动辄回退
                 // 到 4-8MB 原图,手机上代价太大。
+                // ★ 重试必须重新入队：原来直接改 src 会绕开 MAX_CONCURRENT。
                 $i.data('retry', n + 1);
-                $i.attr('src', self.thumbUrl(file, 'grid', n + 1));
+                $i.attr('data-src', self.thumbUrl(file, 'grid', n + 1));
+                self.requeueThumb(img);
                 return;
             }
             if ($i.data('fb')) {
                 // 原图也失败:显示占位
+                self.settleThumb(img);
+                img._state = 'done';
                 $i.removeAttr('src').addClass('gallery-img-fallback');
+                /* ★ 2026-11-22 P1：这里必须自己继续调度。
+                 * 触发顺序是「本通用 handler 先、_startThumb 的 .nxthumb handler 后」
+                 * （后者是后绑的），所以票据已被上面这行结算掉；
+                 * 等 .nxthumb handler 跑时 `img._thumbToken !== token` 直接 return，不会 pump。
+                 * 两个在飞请求同时走到这里时，槽位全还了却没人发牌 —— 队列停住
+                 * （实测：在飞 2→0，仍有 1 张 queued）。 */
+                self.pumpThumbs();
             } else {
                 // 缩略图失败:回退加载原图(相机端未部署 CGI 时保证可用)
                 $i.data('fb', true);
-                $i.attr('src', $i.data('orig'));
+                $i.attr('data-src', $i.attr('data-orig'));
+                self.requeueThumb(img);
             }
         });
         $item.append($img);
@@ -718,19 +789,23 @@ Gallery.prototype.initObserver = function () {
             var el = en.target;
             if (en.isIntersecting) {
                 var $img = $(el);
-                if (!el.getAttribute('src') && $img.data('src')) {
+                if (!el.getAttribute('src') && $(el).attr('data-src')) {
                     // 入队而非直接发起,由调度器按并发上限发放
                     self.enqueueThumb(el);
                 }
             } else {
                 // 滚出视口:释放解码内存(回退原图的不再释放,避免反复下载大图)
                 var $out = $(el);
-                // 还在排队未发起的,直接取消,不占相机端资源
-                if (self.dequeueThumb(el)) {
+                // 排队中 / 在飞：主动结算，把并发位立刻还回去。
+                // 在飞的部分原来只能干等 load/error，而 removeAttribute('src')
+                // 通常不派发事件 —— 这就是网格永久卡死的来源。
+                if (self.cancelThumb(el)) {
                     continue;
                 }
-                if (!$out.data('fb') && el.getAttribute('src')) {
+                if (el._state === 'done' && !$out.data('fb') && el.getAttribute('src')) {
+                    el._cancelled = true;
                     el.removeAttribute('src');
+                    el._state = 'idle';
                     el._loaded = false; // 允许滚回时重新入队
                 }
             }
@@ -741,67 +816,180 @@ Gallery.prototype.initObserver = function () {
     });
 };
 
-/* ============ 缩略图请求限流队列 ============ */
+/* ============ 缩略图请求限流队列 ============
+ *
+ * 状态机（每个 img 元素上，字段 img._state）：
+ *   idle      无请求
+ *   queued    在 _loadQueue 里等并发位
+ *   inflight  已 setAttribute('src')，持有票据 img._thumbToken
+ *   done      已成功显示，或已确认失败并落到占位
+ *
+ * 三条铁律：
+ *   1. 只有 inflight 能减计数；一张图同一时刻只有一个票据
+ *   2. 结算幂等：重复调用不改变计数
+ *   3. 取消不依赖浏览器事件 —— 直接清票据、解绑、还槽位
+ *
+ * 2026-11-22：旧版用单一 `_loading` 计数器 + `.one('load.nxthumb error.nxthumb')`。
+ * 两个问题都会让网格永久卡死：
+ *   · jQuery 的 .one() 对多事件是「每种各执行一次」，一次 error 后重试成功还能再减一次
+ *   · 取消时 removeAttribute('src') 通常不派发 load/error，计数只增不减
+ */
 
-/* 入队:等待调度器发放请求 */
+/* 入队：等待调度器发放请求 */
 Gallery.prototype.enqueueThumb = function (img) {
     var self = this;
-    if (img._queued || img._loaded) {
+    if (img._state === 'queued' || img._state === 'inflight') {
         return;
     }
-    img._queued = true;
+    if (img._state === 'done' && img._loaded) {
+        return;
+    }
+    img._state = 'queued';
+    img._loaded = false;
+    img._cancelled = false;
     self._loadQueue.push(img);
     self.pumpThumbs();
 };
 
-/* 出队:滚出视口时尚未发起的请求直接取消 */
+/* 出队：只处理"还在队列里、尚未发起"的请求。返回 true 表示确实取消了一个。 */
 Gallery.prototype.dequeueThumb = function (img) {
     var self = this;
-    if (!img._queued) {
+    if (img._state !== 'queued') {
         return false;
     }
     var idx = self._loadQueue.indexOf(img);
     if (idx >= 0) {
         self._loadQueue.splice(idx, 1);
     }
-    img._queued = false;
+    img._state = 'idle';
     return true;
 };
 
-/* 调度:维持并发数不超过 MAX_CONCURRENT */
+/* 结算一张在飞的图：作废票据、解绑调度事件、释放并发位。幂等。 */
+Gallery.prototype.settleThumb = function (img) {
+    var self = this;
+    var token = img._thumbToken;
+    if (!token) {
+        return false;
+    }
+    img._thumbToken = 0;
+    if (self._inflight[token]) {
+        delete self._inflight[token];
+        self._inflightCount--;
+        if (self._inflightCount < 0) { self._inflightCount = 0; }
+    }
+    $(img).off('.nxthumb');
+    if (img._state === 'inflight') {
+        img._state = 'idle';
+    }
+    self._loading = self._inflightCount;
+    return true;
+};
+
+/* 取消：排队中的直接出队；在飞的主动结算并丢弃 src。 */
+Gallery.prototype.cancelThumb = function (img) {
+    var self = this;
+    if (self.dequeueThumb(img)) {
+        return true;
+    }
+    if (img._state === 'inflight') {
+        img._cancelled = true;      // 抑制迟到的 error 重试
+        self.settleThumb(img);
+        img.removeAttribute('src');
+        img._loaded = false;
+        self.pumpThumbs();
+        return true;
+    }
+    return false;
+};
+
+/* 失败后重新排队：先结算旧票据，再按 data-src 的新目标入队。 */
+Gallery.prototype.requeueThumb = function (img) {
+    var self = this;
+    self.settleThumb(img);
+    img._state = 'idle';
+    img._loaded = false;
+    img._cancelled = false;
+    self.enqueueThumb(img);
+};
+
+/* 调度：在飞数不超过 MAX_CONCURRENT */
 Gallery.prototype.pumpThumbs = function () {
     var self = this;
     var guard = 0;
-    while (self._loading < Gallery.MAX_CONCURRENT &&
+    while (!self.downloading && self._inflightCount < Gallery.MAX_CONCURRENT &&
            self._loadQueue.length > 0 &&
            guard++ < 200) {
         var img = self._loadQueue.shift();
-        img._queued = false;
-        var $img = $(img);
-        var src = $img.data('src');
-        if (!src) {
+        if (img._state !== 'queued') {
             continue;
         }
-        self._loading++;
-        // 完成/失败后释放槽位并继续发放下一张
-        $img.one('load.nxthumb error.nxthumb', function () {
-            self._loading--;
-            this._loaded = true;
-            self.pumpThumbs();
-        });
-        img.setAttribute('src', src);
+        var src = $(img).attr('data-src');
+        if (!src) {
+            img._state = 'idle';
+            continue;
+        }
+        self._startThumb(img, src);
     }
 };
 
-/* 清空队列(刷新相册/切换相机时调用) */
+/* 发起一次受管请求。load/error 各绑一次，谁先到谁结算，另一个随即解绑。 */
+Gallery.prototype._startThumb = function (img, src) {
+    var self = this;
+    var $img = $(img);
+    var token = ++self._thumbSeq;
+
+    img._thumbToken = token;
+    img._state = 'inflight';
+    img._cancelled = false;
+    self._inflight[token] = img;
+    self._inflightCount++;
+    self._loading = self._inflightCount;
+
+    $img.off('.nxthumb');
+    $img.one('load.nxthumb', function () {
+        if (img._thumbToken !== token) { return; }
+        self.settleThumb(img);
+        img._state = 'done';
+        img._loaded = true;
+        self.pumpThumbs();
+    });
+    $img.one('error.nxthumb', function () {
+        if (img._thumbToken !== token) { return; }
+        // 重试/回退由 buildItem 的 error handler 决定；这里只负责还槽位。
+        self.settleThumb(img);
+        self.pumpThumbs();
+    });
+    img.setAttribute('src', src);
+};
+
+/* 清空队列（刷新相册 / 切换相机时调用）。
+ * 在飞的必须逐个作废并摘掉 src：旧视图的回调会污染新会话，
+ * 而旧版直接把 `_loading = 0` 配上迟到的 load 事件会让计数变负数 ——
+ * 负值下限流形同不存在，几十个请求会同时打到单核相机上。 */
 Gallery.prototype.resetThumbQueue = function () {
     var self = this;
-    var i;
+    var i, token;
     for (i = 0; i < self._loadQueue.length; i++) {
-        self._loadQueue[i]._queued = false;
+        var q = self._loadQueue[i];
+        if (q._state === 'queued') { q._state = 'idle'; }
+        q._cancelled = true;
     }
     self._loadQueue = [];
+    for (token in self._inflight) {
+        if (!self._inflight.hasOwnProperty(token)) { continue; }
+        var img = self._inflight[token];
+        img._thumbToken = 0;
+        img._state = 'idle';
+        img._loaded = false;
+        img._cancelled = true;
+        $(img).off('.nxthumb');
+        img.removeAttribute('src');
+    }
+    self._inflight = {};
+    self._inflightCount = 0;
     self._loading = 0;
+    self._thumbSeq = 0;
 };
 
 /* 注销观察器(刷新/重进相册时调用) */
@@ -819,14 +1007,23 @@ Gallery.prototype.removeObserver = function () {
  * 0.5-2s/张)。没有提示时用户只能对着空白网格干等,以为是卡住了 ——
  * 这里把后台进度显示成"预热中 87/149",并在结束后自动停止轮询
  * (不白占相机 CPU 和 WiFi 带宽)。 */
+/* 2026-11-22 实机结论：NX500 原片自带 320px(IFD1) 与 1616px(MPF) 内嵌图，
+ * thumb-cgi 直切字节就够了。预热 worker 跑 62 张的结果是
+ *   generated=0  sliced=62  skipped=0  failed=0
+ * —— 纯空转，还要每 4s 占一次 8080 请求（最多 90 次）。
+ * 默认关掉。真要预热（导入外机照片/PNG）时置 true，
+ * 或手动跑 /opt/usr/nx-ks/nx-rc/thumb/thumb-prewarm.sh start。 */
+Gallery.PREWARM_ENABLED = false;
 Gallery.PREWARM_INTERVAL = 4000;   // 轮询间隔(ms)
 Gallery.PREWARM_MAX_POLL = 90;     // 最多查 90 次(约 6 分钟)后放弃
 
 Gallery.prototype.startPrewarmPoll = function () {
     var self = this;
     self.stopPrewarmPoll();
+    if (!Gallery.PREWARM_ENABLED) { return; }
     var n = 0;
     var tick = function () {
+        if (self.downloading) return;
         n++;
         var url = 'http://' + app.hostname + ':' + Gallery.THUMB.port +
                   '/cgi-bin/prewarm';
@@ -908,15 +1105,21 @@ Gallery.prototype.buildToolbar = function () {
             self.setSelectMode(false);
         });
     var $dlInfo = $('<span class="gallery-dl-info" style="display:none;"></span>');
+    var $stopDownload = $('<button type="button" class="btn btn-xs btn-warning" style="display:none;">停止下载</button>')
+        .on('click', function () { self._downloadCancelled = true; if (self._downloadXhr) self._downloadXhr.abort(); });
+    var $retryDownload = $('<button type="button" class="btn btn-xs btn-default" style="display:none;">重试失败</button>')
+        .on('click', function () { self.downloadSelected(self._failedDownloads || []); });
 
     $bar.append($refresh).append($orig).append($select)
         .append($selectAll).append($download).append($cancel)
-        .append($dlInfo);
+        .append($stopDownload).append($retryDownload).append($dlInfo);
     self._selectBtn = $select;
     self._selectAllBtn = $selectAll;
     self._downloadBtn = $download;
     self._cancelBtn = $cancel;
     self._dlInfo = $dlInfo;
+    self._stopDownload = $stopDownload;
+    self._retryDownload = $retryDownload;
     return $bar;
 };
 
@@ -1009,61 +1212,320 @@ Gallery.prototype.downloadUrl = function (file) {
     }
 };
 
-/* 批量下载的单文件步骤(等待完整响应后再处理下一张) */
+/* 单个文件的下载分片：4 MiB 一片。
+ * 2026-11-22 实机实测（10.3MB 原片，Wi-Fi 1.8MB/s）：每片固定开销约 0.4s
+ * （CGI 启动 + 打开文件 + stat），所以片越小总耗时越长：
+ *   2 MiB × 6 片 = 9.0s ｜ 4 MiB × 3 片 = 6.0s ｜ 整块 1 次 = 6.0s
+ * 4 MiB 与整块持平，同时断线最多只重传 4MB —— 就取它。 */
+Gallery.DOWNLOAD_CHUNK = 4 * 1024 * 1024;
+Gallery.DOWNLOAD_TRIES = 3;
+/* 超过这个大小就不再走「整块读进 JS 堆」的路径。
+ * arraybuffer + Uint8Array(total) 会一次性分配 total 字节的 JS 堆内存；
+ * 相机 4K 录像动辄 1-2GB，手机浏览器分配这个量级会直接失败或把页面搞崩。
+ * 原实现用 responseType='blob'，数据由浏览器自己管（可落盘），不受此限。
+ * 所以：小文件走分片（可续传），大文件退回 blob 单请求（有超时、无续传）。 */
+Gallery.DOWNLOAD_MAX_RESUME = 64 * 1024 * 1024;
+
+/* 批量下载的单文件步骤。
+ *
+ * 2026-11-22 修四个会让"批量下载卡死"的问题：
+ *   1. 原来直接拉 file.url（80 端口 daemon 的原图），绕开了 8080 的
+ *      download-cgi —— 后者支持 Range/ETag/304，也不与遥控心跳抢 daemon。
+ *   2. 从未设置 xhr.timeout，ontimeout 是死钩子。相机 WiFi 半开时这个 XHR
+ *      既不 load 也不 error，批量队列就永远停在"正在下载 3/20：45%"。
+ *   3. 只判 status===200 就保存，HTML 错误页会被当成照片存下来。
+ *   4. 外层无差别重试 3 次、每次从头拉。8MB 原图在弱 WiFi 上一次下完的
+ *      概率很低，重试等于把同样的 8MB 再赌一遍。
+ *
+ * 现在的流程：
+ *   HEAD 探能力（不传 body，避免为一探白下一整份）→ 大文件走分片 Range，
+ *   断线只重试当前片；服务端不认 Range 就退化成整块；404/403/416 不重试。
+ *   片与片之间要求严格首尾相接（start === nextStart 且长度吻合），
+ *   所以拼接不可能错位。
+ */
 Gallery.prototype.downloadOne = function (file, done) {
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', file.url, true);
-    xhr.responseType = 'blob';
-    xhr.onload = function () {
-        if (xhr.status === 200 && xhr.response) {
-            var url = URL.createObjectURL(xhr.response);
-            var a = document.createElement('a');
-            a.href = url;
-            var dlName = file.name;
-            if (file.dir && file.dir !== '根目录') {
-                dlName = file.dir + '_' + file.name;
-            }
-            a.download = dlName;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
-            done(true);
-        } else {
-            done(false);
+    var self = this;
+    var url = self.downloadUrl(file) || file.url;
+    var chunkSize = Gallery.DOWNLOAD_CHUNK;
+    var total = 0;        // 总字节，0 = 未知
+    var buf = null;       // Uint8Array(total)，收到即写入，不额外留存分片副本
+    var nextStart = 0;    // 已收字节数 = 下一片起点
+    var tries = 0;        // 当前片的尝试次数
+    var mode = 'probe';   // probe | ranged | whole
+    var expectEtag = '';  // HEAD 给出的版本标识；分片据此拒绝跨版本拼接
+    var settled = false;
+
+    function finish(ok) {
+        if (settled) { return; }
+        settled = true;
+        self._downloadXhr = null;
+        done(ok);
+    }
+
+    function saveBlob(blob) {
+        var objUrl = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = objUrl;
+        var dlName = file.name;
+        if (file.dir && file.dir !== '根目录') {
+            dlName = file.dir + '_' + file.name;
         }
-    };
-    xhr.onerror = function () { done(false); };
-    xhr.send();
+        a.download = dlName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(objUrl); }, 5000);
+        finish(true);
+    }
+
+    function save() {
+        if (!total || nextStart !== total || !buf) { finish(false); return; }
+        var all = buf;
+        /* 错误页几乎总是 HTML/JSON，正常媒体不会以 '<' 或 '{"' 开头。
+         * 不做完整魔数白名单 —— 那会误伤少见的容器格式。 */
+        if (all.length < 2 || all[0] === 0x3C ||
+            (all[0] === 0x7B && all[1] === 0x22)) {
+            finish(false);
+            return;
+        }
+        saveBlob(new Blob([all], { type: 'application/octet-stream' }));
+    }
+
+    function retry() {
+        if (self._downloadCancelled) { finish(false); return; }
+        if (tries < Gallery.DOWNLOAD_TRIES) {
+            setTimeout(step, 400 * tries);
+            return;
+        }
+        if (mode === 'ranged') {
+            /* 分片彻底失败：可能是跨域预检被拒（相机 busybox httpd 不一定
+             * 答 OPTIONS）。退回整块，至少还能下完 —— 只是没有断点续传。 */
+            mode = 'whole';
+            buf = null;
+            nextStart = 0;
+            total = 0;
+            tries = 0;
+            setTimeout(step, 0);
+            return;
+        }
+        finish(false);
+    }
+
+    function step() {
+        if (settled) { return; }
+        if (self._downloadCancelled) { finish(false); return; }
+        tries++;
+
+        var end = nextStart + chunkSize - 1;
+        if (total > 0 && end > total - 1) { end = total - 1; }
+
+        var useBlob = (mode === 'blob');
+        var target = url;
+        if (!useBlob && mode === 'ranged' && total > 0) {
+            // 分片参数走 query，不用 Range 头 —— busybox httpd 不把它转给 CGI
+            target = url + (url.indexOf('?') >= 0 ? '&' : '?') +
+                     'b=' + nextStart + '&e=' + end;
+        }
+        var xhr = new XMLHttpRequest();
+        self._downloadXhr = xhr;
+        xhr.open('GET', target, true);
+        xhr.responseType = useBlob ? 'blob' : 'arraybuffer';
+        xhr.timeout = useBlob ? 300000 : 90000;
+
+        // 无进展看门狗：45s 没有一个字节就主动放弃，让本片重来。
+        // 只靠 xhr.timeout 不够 —— 半开连接上 progress 会一直有微量推进。
+        var lastAt = Date.now();
+        var watchdog = setInterval(function () {
+            if (Date.now() - lastAt > 45000) {
+                clearInterval(watchdog);
+                try { xhr.abort(); } catch (e) { /* 已结束 */ }
+            }
+        }, 5000);
+        function settleTimer() { clearInterval(watchdog); }
+
+        xhr.onprogress = function (e) {
+            lastAt = Date.now();
+            if (e.lengthComputable && total > 0) {
+                self._dlInfo.text('正在下载 ' + self._downloadPosition + '：' +
+                    Math.floor((nextStart + e.loaded) * 100 / total) + '%');
+            }
+        };
+
+        xhr.onload = function () {
+            settleTimer();
+            var code = xhr.status;
+            if (code === 404 || code === 403 || code === 416) {
+                // 文件不存在 / 无权限 / 区间不可满足：重试没有意义
+                finish(false);
+                return;
+            }
+            if (code !== 200 && code !== 206) { retry(); return; }
+
+            /* 大文件：blob 由浏览器自己管，不分配 JS 堆。
+             * 代价是没有断点续传，靠 300s 超时 + 3 次整体重试。 */
+            if (useBlob) {
+                var b = xhr.response;
+                if (!b || !b.size) { retry(); return; }
+                if (b.size < 512) {
+                    // 小响应才可能是错误页，读首两字节确认；大响应直接保存
+                    b.slice(0, 2).arrayBuffer().then(function (ab) {
+                        var h = new Uint8Array(ab);
+                        if (h.length >= 2 &&
+                            (h[0] === 0x3C || (h[0] === 0x7B && h[1] === 0x22))) {
+                            finish(false);
+                        } else {
+                            saveBlob(b);
+                        }
+                    }, function () { saveBlob(b); });
+                    return;
+                }
+                saveBlob(b);
+                return;
+            }
+
+            var data = new Uint8Array(xhr.response || new ArrayBuffer(0));
+
+            /* 分片模式只核对长度：服务端按 b/e 切，Content-Length 就是段长。
+             * 不依赖 206 / Content-Range —— 本机 httpd 不透传 Range 头。 */
+            if (mode === 'ranged') {
+                /* ★ 2026-11-22 P2：先验版本，再比长度。
+                 * 同名文件在下载期间被替换时，长度合法但属于不同版本的片段
+                 * 仍会被拼进去并报告成功（静默损坏）。HEAD 与各片都带 ETag 时拒绝。 */
+                var gotEtag = (xhr.getResponseHeader('ETag') || '').trim();
+                if (expectEtag && gotEtag && gotEtag !== expectEtag) {
+                    finish(false);
+                    return;
+                }
+                var want = end - nextStart + 1;
+                if (data.byteLength === want) {
+                    if (!buf || buf.length !== total) { buf = new Uint8Array(total); }
+                    buf.set(data, nextStart);
+                    nextStart = end + 1;
+                    tries = 0;
+                    if (nextStart >= total) { save(); return; }
+                    setTimeout(step, 0);
+                    return;
+                }
+                if (data.byteLength === total && nextStart === 0) {
+                    // CGI 不认 b/e（旧版），返回了全文：转整块，别再白试
+                    mode = 'whole';
+                    buf = new Uint8Array(total);
+                    buf.set(data, 0);
+                    nextStart = data.byteLength;
+                    save();
+                    return;
+                }
+                retry();
+                return;
+            }
+
+            /* whole：一份就是全文 */
+            var len = parseInt(xhr.getResponseHeader('Content-Length') || '0', 10);
+            var declared = len > 0 ? len : data.byteLength;
+            if (data.byteLength !== declared) { retry(); return; }
+            total = declared;
+            buf = new Uint8Array(declared);
+            buf.set(data, 0);
+            nextStart = data.byteLength;
+            save();
+        };
+
+        xhr.onerror = function () { settleTimer(); retry(); };
+        xhr.ontimeout = function () { settleTimer(); retry(); };
+        xhr.onabort = function () {
+            settleTimer();
+            if (self._downloadCancelled) { finish(false); return; }
+            retry();   // 看门狗中止：本片重来
+        };
+        xhr.send();
+    }
+
+    function probe() {
+        var xhr = new XMLHttpRequest();
+        self._downloadXhr = xhr;
+        xhr.open('HEAD', url, true);
+        xhr.timeout = 15000;
+        xhr.onload = function () {
+            var code = xhr.status;
+            if (code === 404 || code === 403) { finish(false); return; }
+            var len = parseInt(xhr.getResponseHeader('Content-Length') || '0', 10);
+            /* 用 X-Accept-Chunk 而不是 Accept-Ranges：busybox httpd 不把 Range
+             * 头传给 CGI（实测 HTTP_RANGE 为空），所以标准 206 走不通；
+             * 分片是靠 query 参数 b/e 实现的，能力由这个自定义头声明。 */
+            var chunkable = /^1$/.test((xhr.getResponseHeader('X-Accept-Chunk') || '').trim());
+            /* HEAD 的版本标识：分片模式下每片都要比对，防止同名文件被替换后
+               把两个版本的片段拼成"长度合法但内容错乱"的文件（静默损坏）。 */
+            expectEtag = (xhr.getResponseHeader('ETag') || '').trim();
+            /* ★ 2026-11-22 P2：len 无效（HEAD 405 被拒 / 无 Content-Length）时不能进 whole。
+             * whole 走 arraybuffer，未知大小的视频会整份进 JS 堆，绕过 DOWNLOAD_MAX_RESUME
+             * 的 64MiB 保护。这种情况和 onerror/ontimeout 一样交给浏览器流式管（blob）。 */
+            if (!(len > 0)) {
+                mode = 'blob';
+            } else if (len > Gallery.DOWNLOAD_MAX_RESUME) {
+                // 太大，不能整块拼进 JS 堆：交给浏览器自己管（blob）
+                mode = 'blob';
+            } else if (chunkable && len > chunkSize) {
+                mode = 'ranged';
+                total = len;
+            } else {
+                mode = 'whole';
+            }
+            step();
+        };
+        // HEAD 拿不到大小（网络问题/HEAD 被拒且无 Content-Length）时，
+        // 无从判断文件多大 —— 选不分配 JS 堆的 blob 更安全。
+        xhr.onerror = function () { mode = 'blob'; step(); };
+        xhr.ontimeout = function () { mode = 'blob'; step(); };
+        xhr.onabort = function () {
+            if (self._downloadCancelled) { finish(false); return; }
+            mode = 'blob';
+            step();
+        };
+        xhr.send();
+    }
+
+    probe();
 };
 
 /* 批量下载:串行逐张下载(避免并发打满相机 WiFi) */
-Gallery.prototype.downloadSelected = function () {
+Gallery.prototype.downloadSelected = function (retryFiles) {
     var self = this;
-    var indexes = Object.keys(self.selection);
+    var files = Array.isArray(retryFiles) ? retryFiles.slice() : Object.keys(self.selection).map(function (index) { return self.media[index]; });
     var i = 0;
     var ok = 0;
-    var fail = 0;
-    if (indexes.length === 0 || self.downloading) {
+    var failed = [];
+    if (files.length === 0 || self.downloading) {
         return;
     }
     self.downloading = true;
-    self._dlInfo.show().text('正在下载 0/' + indexes.length + ' ...');
+    self._downloadCancelled = false;
+    self._failedDownloads = [];
+    self._retryDownload.hide();
+    self._stopDownload.show();
+    self._dlInfo.show().text('正在下载 0/' + files.length + ' ...');
     self._downloadBtn.prop('disabled', true);
 
     function next() {
-        if (i >= indexes.length) {
+        if (i >= files.length || self._downloadCancelled) {
+            if (self._downloadCancelled) failed = failed.concat(files.slice(i));
             self.downloading = false;
+            self.pumpThumbs();
+            self._downloadXhr = null;
+            self._stopDownload.hide();
             self._downloadBtn.prop('disabled', false);
-            var msg = '下载完成:成功 ' + ok + (fail > 0 ? (',失败 ' + fail) : '');
+            self._failedDownloads = failed;
+            if (failed.length) self._retryDownload.show().text('重试失败 (' + failed.length + ')');
+            var msg = (self._downloadCancelled ? '已停止' : '下载完成') + ':成功 ' + ok + (failed.length ? (',未完成 ' + failed.length) : '');
             self._dlInfo.text(msg);
-            setTimeout(function () { self._dlInfo.hide(); }, 6000);
             return;
         }
-        var file = self.media[indexes[i]];
-        self._dlInfo.text('正在下载 ' + (i + 1) + '/' + indexes.length + ' ...');
+        var file = files[i];
+        self._downloadPosition = (i + 1) + '/' + files.length;
+        self._dlInfo.text('正在下载 ' + self._downloadPosition + ' ...');
+        /* 重试与续传都在 downloadOne 内部完成 —— 只有那里知道已经收了多少
+         * 字节。外层只负责推进队列，避免同一次失败被内外两层各重试一遍。 */
         self.downloadOne(file, function (success) {
-            if (success) { ok++; } else { fail++; }
+            if (success) { ok++; } else { failed.push(file); }
             i++;
             next();
         });
