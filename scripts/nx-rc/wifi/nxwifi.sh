@@ -36,6 +36,7 @@ MOD=$D/modules/cfg80211-cn-low5g.ko
 # nxl-wifi-radio 里 INSTALLED 是编译期常量 /opt/usr/nx-lut-lite，必须真实存在
 NXL_DIR=/opt/usr/nx-lut-lite
 POPUP=/opt/usr/nx-ks/popup_timeout
+DIALOG=/opt/usr/nx-ks/nxdialog.sh
 HOT_OWNER=/tmp/nx-lut-lite/wifi-hotspot.owner
 LOG=/mnt/mmc/nx-ks/wifi.log
 mkdir -p /mnt/mmc/nx-ks 2>/dev/null
@@ -120,6 +121,29 @@ note_tethering() {
   return 0
 }
 
+# 地址要能让用户看着抄下来，所以画在 nxui 面板里（版本号那种小弹窗：
+# 主循环每帧读 /tmp/nxui-dialog，点「关闭」或按键才收，不自动消失）。
+# 不能用 popup_timeout —— 独立 EFL 窗口，会被 nxui 这块 override-redirect
+# 面板整块盖住，菜单里点完什么都看不见。
+# 这里自己判面板（ps，已验证可靠），不依赖 nxdialog.sh 内部的 pidof 分支。
+panel_running() {
+  ps 2>/dev/null | grep -q "[n]xui.arm"
+}
+
+show_addr() {
+  # $1 = 标题行，$2 = 地址行
+  if panel_running; then
+    printf '%s\n%s\n' "$1" "$2" > /tmp/nxui-dialog 2>/dev/null && return 0
+  fi
+  if [ -x "$DIALOG" ]; then
+    "$DIALOG" "$1" "$2" >/dev/null 2>&1
+  elif [ -x "$POPUP" ]; then
+    "$POPUP" " $2 " 10 >/dev/null 2>&1 &
+  else
+    say "$1 $2"
+  fi
+}
+
 hotspot_notice() {
   label=$1
   hip=$(uap_ip)
@@ -133,9 +157,7 @@ hotspot_notice() {
   fi
   say "HOTSPOT_UP $label url=http://$hip/"
   log "hotspot up $label url=http://$hip/"
-  if [ -x "$POPUP" ]; then
-    "$POPUP" " [ http://$hip/ ] " 10 2>/dev/null &
-  fi
+  show_addr "$label 热点已开" "http://$hip/"
   return 0
 }
 
@@ -175,7 +197,7 @@ case "${1:-status}" in
     if [ -n "$ip" ]; then
       say "HOTSPOT_UP ip=$ip ssid=$(uap_ssid) password=UNKNOWN(st-fallback)"
       log "start24 up (fallback) ip=$ip st_rc=$rc"
-      [ -x "$POPUP" ] && "$POPUP" " [ http://$ip/ ] " 10 2>/dev/null &
+      show_addr "2.4GHz 热点已开" "http://$ip/"
       exit 0
     fi
     say "HOTSPOT_START_PENDING st_rc=$rc (无 uap0 地址，原厂可能仍在启动或机身设置里未启用移动 AP)"
@@ -240,14 +262,12 @@ case "${1:-status}" in
     if [ -z "$ip" ]; then
       say "WIFI_DOWN 相机未连 WiFi"
       log "album: no mlan0 ip"
-      [ -x "$POPUP" ] && "$POPUP" " [ 未连 WiFi ] " 3 2>/dev/null &
+      show_addr "相机未连 WiFi" "先按机身 WiFi 键连路由器"
       exit 1
     fi
     say "ALBUM http://$ip/"
     log "album url=http://$ip/"
-    if [ -x "$POPUP" ]; then
-      "$POPUP" " [ http://$ip/ ] " 5 2>/dev/null &
-    fi
+    show_addr "局域网相册" "http://$ip/"
     exit 0
     ;;
   off)
