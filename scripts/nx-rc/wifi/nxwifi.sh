@@ -158,7 +158,10 @@ reload_driver() {
   done
   sleep 1
   if [ "$use5g" = "1" ]; then
-    cfg=$NXL_DIR/modules/cfg80211-cn-low5g.ko
+    # 模块跟着脚本走（$MOD = 脚本目录/modules/），不依赖 /opt/usr/nx-lut-lite ——
+    # 那个目录只有 radio 的 ensure_nxl_layout 才会铺，STA 这条路用不着 radio。
+    cfg=$MOD
+    [ -f "$cfg" ] || cfg=$NXL_DIR/modules/cfg80211-cn-low5g.ko
   else
     cfg=/lib/modules/cfg80211.ko
   fi
@@ -339,7 +342,7 @@ case "${1:-status}" in
     # 让相机以客户端身份连 5 GHz：开 band word → 换 5G cfg80211 → 重载驱动(drv_mode=1) → 重连
     MACADDR=$(cat /opt/etc/.mac.info 2>/dev/null)
     [ -n "$MACADDR" ] || die "MAC_UNAVAILABLE" 1
-    [ -f "$NXL_DIR/modules/cfg80211-cn-low5g.ko" ] || die "MODULE_MISSING（先跑一次 start5g 铺目录，或手工复制）" 1
+    [ -f "$MOD" ] || die "MODULE_MISSING $MOD" 1
     log "sta5g begin (band word 0->1, reload drv_mode=1)"
     before=$($BB devmem 0x85440068 32 2>/dev/null)
     log "sta5g: band word before=$before"
