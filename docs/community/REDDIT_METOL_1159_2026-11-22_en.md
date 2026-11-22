@@ -35,12 +35,6 @@ card / `/opt/usr`.
      `cfg80211` module built for CN 5 GHz channels (insmod'd from `/tmp`, the on-disk module is
      untouched), then bind-mount over `/usr/sbin/hostapd` so the stock launch path gets our config
      (CH48 / HT40-minus).
-     
-     The one non-obvious prerequisite: the stock `mobileap-agent` has to be running, otherwise
-     nothing ever calls `hostapd`. It's activated over the system bus via
-     `org.tizen.tethering` — the service file sits in `/usr/share/dbus-1/services/` and
-     `/etc/dbus-1/system.conf`'s `servicedir` points there. Any method call wakes it up, so the
-     script just pings it before starting the hotspot. Took me a while to find that one.
 
 **Status**
 

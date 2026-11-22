@@ -217,11 +217,10 @@ sh /opt/usr/nx-ks/nxui.sh diag       # 面板能不能用，一次看全
 
 > 现状：A、B 两条都已实测可用（B 在 2026-11-22 由机主验证，5 GHz）。
 >
-> B 能通的关键是原厂 `mobileap-agent` 必须活着 —— 它由 system bus 上的
-> `org.tizen.tethering` 激活（服务定义在 `/usr/share/dbus-1/services/`，
-> 而 `/etc/dbus-1/system.conf` 的 `servicedir` 正指向那里）。`nxwifi.sh` 会在起热点前
-> 自动 ping 一次把它拉起来，正常情况下不用手动干预；如果热点迟迟不起，
-> 看 `/mnt/mmc/nx-ks/wifi.log` 里有没有 `tethering activation FAILED`。
+> 起不来的话先看 `/mnt/mmc/nx-ks/wifi.log`：脚本会记一条 `tethering present` /
+> `tethering absent`。`mobileap-agent` 由 system bus 上的 `org.tizen.tethering` 按需激活
+> （服务定义在 `/usr/share/dbus-1/services/`，`/etc/dbus-1/system.conf` 的 `servicedir`
+> 指向那里），那是原厂网络栈自己的状态机，本脚本不去碰它，只做记录。
 
 ### 分辨率映射
 

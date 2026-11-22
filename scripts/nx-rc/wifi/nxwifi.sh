@@ -108,27 +108,16 @@ preflight() {
 }
 
 # 热点起来后没人知道该连哪儿 —— 屏幕上弹一次地址，手机照着敲/扫。
-# ★ 原厂 mobileap-agent 没跑时，hostapd 永远不会被调起 ⇒ 热点起不来（2026-11-22 实证）。
-#   它由 system bus 上的 org.tizen.tethering 激活：服务定义在
-#   /usr/share/dbus-1/services/，而 /etc/dbus-1/system.conf 的 <servicedir> 正指向那里。
-#   所以「发一条 Ping」就能把它拉起来 —— 任何方法调用都会触发 dbus 激活。
-ensure_tethering() {
+# 只观察，不干预：原厂 mobileap-agent 由 org.tizen.tethering 按需激活，那属于原厂网络栈
+# 自己的状态机，脚本不去 dbus-send 拉它（会多一个副作用，且没有证据表明必要）。
+# 这里只把"在不在"记进日志，起不来时日志能直接指向原因。
+note_tethering() {
   if ps 2>/dev/null | grep -q "[m]obileap-agent"; then
-    log "tethering already running"
-    return 0
+    log "tethering present"
+  else
+    log "tethering absent (mobileap-agent not in ps) — 若热点起不来，先看这一条"
   fi
-  [ -x /usr/bin/dbus-send ] || return 1
-  log "tethering not running, activating org.tizen.tethering"
-  /usr/bin/dbus-send --system --print-reply --dest=org.tizen.tethering \
-      / org.freedesktop.DBus.Peer.Ping >>"$LOG" 2>&1
-  i=0
-  while [ "$i" -lt 20 ]; do
-    ps 2>/dev/null | grep -q "[m]obileap-agent" && { log "tethering activated"; return 0; }
-    sleep 0.5
-    i=$((i+1))
-  done
-  log "tethering activation FAILED"
-  return 1
+  return 0
 }
 
 hotspot_notice() {
@@ -153,7 +142,7 @@ hotspot_notice() {
 case "${1:-status}" in
   start24)
     preflight
-    ensure_tethering || log "start24: tethering not activated, hotspot may fail"
+    note_tethering
     ip=$(uap_ip)
     if [ -n "$ip" ]; then
       say "ALREADY_UP ip=$ip ssid=$(uap_ssid)"
@@ -279,7 +268,7 @@ case "${1:-status}" in
     preflight
     [ -x "$RADIO" ] || die "RADIO_MISSING $RADIO" 1
     ensure_nxl_layout || die "NXL_LAYOUT_FAILED $NXL_DIR" 1
-    ensure_tethering || log "start5g: tethering not activated, hotspot may fail"
+    note_tethering
     # ★ radio 用 live_identity() 比对 /proc/<pid>/exe == /opt/usr/nx-lut-lite/bin/nxl-wifi-radio。
     #   从 $D 调起来 exe 是另一个路径，守护进程会判定 AP_LEASE_LOST（2026-11-22 实测）。
     SRV=$NXL_DIR/bin/nxl-wifi-server
