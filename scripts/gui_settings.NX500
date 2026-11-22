@@ -8,9 +8,9 @@ checkbox|无镜头释放|nolens.sh
 checkbox|启用蓝牙|bt.sh
 
 checkbox|叠加显示|ov.sh
-button|卸载模块|uninstall.sh
-
 button|局域网相册|/opt/usr/nx-ks/nx-rc/wifi/nxwifi.sh album
+
 button|相机热点|@/opt/usr/nx-ks/gui_wifi_ap.NX500
+button|卸载模块|uninstall.sh
 button|返回|@/opt/usr/nx-ks/gui_ini.NX500
 button|取消|/opt/usr/nx-ks/gui_exit.sh
