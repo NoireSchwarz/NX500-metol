@@ -190,6 +190,10 @@ FILMLAB_MID=${FILMLAB_MID:-custom}  # custom(默认)=借道另一个自定义槽
 
 # ---- ③ PW 直推（2026-10-09 新增；校准前默认关）----
 PWSEND=${PWSEND:-/opt/usr/nx-ks/pwsend.arm}
+# ★ 2026-11-22 新增：同一件事的快速实现（4KB -nostdlib，8 条无间隔，实测 68ms）。
+#   pwsend 一次 seq 实测 400ms，其中 242ms 是纯等待（7×20ms 条间 + 100ms 收尾），
+#   另有 ~60ms 是 820KB(-O0) 二进制的加载。pwfast 缺失时 pw_direct 自动回退 pwsend。
+PWFAST=${PWFAST:-/opt/usr/nx-ks/pwfast.arm}
 FILMLAB_PW=${FILMLAB_PW:-0}         # 1 = apply 后自动直推（★ 10-15 A2 通道后无需 pwcalib 校准）
 # ★ 10-15 A2 通道（当前生效路径）：pw_direct 固定发 0x134..0x13B（原始值 + 触发），
 #   不再使用下方 PWID_*/编码（保留兼容：旧 conf 里的 PWID_* 将被忽略）。
@@ -231,6 +235,9 @@ setusr20() { st cap capdtm setusr 20 "$1" >/dev/null 2>&1; }
 #   不同的分支；自定义槽之间切换必然走「读槽位数据」的分支。
 #   FILMLAB_MID=standard 可退回旧行为（借道 STANDARD=0x140000）。
 _NEED_PW=0
+# "本次会话已确认运行时档位在 CUSTOM1"的标记（见 pw_preenter_custom1 注释）。
+# 定义必须放在 pw_force_reload 之前 —— 那里要在切档后作废它。
+PREENTER_STAMP=${NX_RAM:-/tmp/nx}/filmlab/preentered
 # pw_force_reload <目标 enum> [已知当前 enum]
 #   第 2 参可省一次 getusr（1.3s）：A2 提交位发送成功后，运行时档位必然是
 #   field 10 ⇒ 调用方已知当前值，不必再读一遍。读回自证仍然保留。
@@ -246,14 +253,18 @@ pw_force_reload() {
     return 0
   fi
   setusr20 "$TGT"
+  # 档位已经变了：之前"确认在 CUSTOM1"的标记作废，下次预览必须重新确认
+  rm -f "$PREENTER_STAMP" 2>/dev/null
   if [ "${UI_REQUEST:-0}" = 1 ]; then
-    # setusr normally completes synchronously. Verify immediately; only wait
-    # while the readback is stale, with the same ~1s upper bound as before.
+    # setusr 通常同步完成，立即回读；只有回读仍是旧值才等。
+    # ★ 2026-11-22 修正：上限原为 20 次，但每次循环含一次 getusr20（实测 340~430ms），
+    #   最坏 26s —— 远超面板 12s/30s 超时，会被 SIGKILL 掉，脚本连日志都来不及打。
+    #   3 次 ≈ 4s，足够覆盖切换延迟；真失败就该尽快报出来而不是拖到被杀。
     PW_RETRIES=0
     while :; do
       NOW=$(getusr20)
       [ "$NOW" = "$TGT" ] && { RELOAD="direct"; return 0; }
-      [ "$PW_RETRIES" -lt 20 ] || break
+      [ "$PW_RETRIES" -lt 3 ] || break
       $BB sleep 0.05
       PW_RETRIES=$((PW_RETRIES + 1))
     done
@@ -275,7 +286,51 @@ pw_force_reload() {
 #   放在直推之前做而不是之后：切档本身不会搬参数（已证伪），早切不影响画面，
 #   只是把"归属窗口"关进 CUSTOM1 —— 那里本来就是配方要写的地方。
 #   每次直推前确认实际档位。面板打开时的档位只用于恢复。
+#
+#   ★ 2026-11-22 实测：一次 preview 790ms，其中 preenter 段 380ms 全是一次
+#   getusr20。面板是触摸 UI —— 用户在看面板时不可能同时转物理拨盘，所以
+#   "同一会话内档位不变"成立。用 90s TTL 的标记跳过重复确认；任何一次
+#   档位切换（pw_force_reload）立即作废该标记。
+#   残留风险：外部脚本在这 90s 内改了档位 —— 面板操作本身独占，接受。
+_preenter_mark() {
+  _d=${PREENTER_STAMP%/*}
+  [ -d "$_d" ] || $BB mkdir -p "$_d" 2>/dev/null
+  read -r _u _ < /proc/uptime 2>/dev/null || _u=0
+  printf '%s\n' "${_u%%.*}" > "$PREENTER_STAMP" 2>/dev/null
+  return 0
+}
+
+# ★★ 2026-11-22 P1 回归修复：缓存跳过已被撤回。
+#   原实现按 90s TTL 跳过档位确认，但标记只是全局时间戳，**没有绑定"当前档位字段"**：
+#     用户 preview（已在 CUSTOM1）→ 切到自定义2 → 90s 内再 preview
+#     ⇒ _preenter_cached 命中，跳过 setusr20 CUSTOM1
+#     ⇒ A2 提交位(0x13B) 把 7 维写进**当时的档位**（自定义2）
+#     ⇒ 污染自定义2；而脚本只备份过 slot 9，那一档不可恢复。
+#   上方注释里写的"任何一次档位切换（pw_force_reload）立即作废该标记"**只覆盖脚本内部切档**：
+#   全文件唯一的作废点在 `setusr20 "$TGT"` 之后（rm -f "$PREENTER_STAMP"），
+#   而**物理拨盘切档不经过 filmlab**，标记照旧存活 ⇒ 90s 污染窗口原样存在。
+#   在能可靠读到当前档位、并把标记与之绑定的方案出现前，这里退回"每次都确认"。
+#   代价：每次 preview 多一次 getusr20（实测 340~430ms）；正确性优先。
+_preenter_cached() {
+  return 1
+}
+
+_preenter_cached_legacy() {
+  [ -f "$PREENTER_STAMP" ] || return 1
+  read -r _t < "$PREENTER_STAMP" 2>/dev/null || return 1
+  read -r _u _ < /proc/uptime 2>/dev/null || return 1
+  case "$_t" in ''|*[!0-9]*) return 1 ;; esac
+  _u=${_u%%.*}
+  [ $((_u - _t)) -le 90 ] 2>/dev/null || return 1
+  return 0
+}
+
 pw_preenter_custom1() {
+  if _preenter_cached; then
+    PREKNOWN=0x140009
+    PREENTER="cached"
+    return 0
+  fi
   PREKNOWN=$(getusr20) || { echo "REJECT: cannot read current PW field"; return 1; }
   case "$PREKNOWN" in
     0x14000[0123456789ac]) ;;
@@ -283,6 +338,7 @@ pw_preenter_custom1() {
   esac
   if [ "$PREKNOWN" = "0x140009" ]; then
     PREENTER="already"
+    _preenter_mark
     return 0
   fi
   rm -f "$PW_CACHE" || return 1
@@ -290,8 +346,11 @@ pw_preenter_custom1() {
   PRE_TRIES=0
   while :; do
     PRENOW=$(getusr20)
-    [ "$PRENOW" = "0x140009" ] && { PREENTER="ok(was=$PREKNOWN)"; return 0; }
-    [ "$PRE_TRIES" -lt 20 ] || break
+    [ "$PRENOW" = "0x140009" ] && { PREENTER="ok(was=$PREKNOWN)"; _preenter_mark; return 0; }
+    # ★ 2026-11-22：上限原为 20 次，每次循环含一次 getusr20（实测 340~430ms）⇒ 最坏约 8.6s。
+    #   加上前面的读档位与 setusr，整条预览路径会超过面板超时被杀。
+    #   3 次 ≈ 4s 已覆盖切换延迟。
+    [ "$PRE_TRIES" -lt 3 ] || break
     $BB sleep 0.05
     PRE_TRIES=$((PRE_TRIES + 1))
   done
@@ -365,14 +424,29 @@ pw_direct() {
   # ★ 10-17：条间 150ms 是 A1 时代的保守值，svdm 是同步返回（rc=0 即已入 MCB）。
   #   浏览预览用 FILMLAB_PWSLEEP=20（2026-11-14 由 40 收到 20），批量写槽仍用 150。
   if [ "$YES" = "--yes" ]; then
-    ARGS="$ARGS --sleep ${FILMLAB_PWSLEEP:-150}"
     # A failed sequence may have partially updated the ISP.
     rm -f "$PW_CACHE" || return 1
   fi
-  echo "  ③ PW直推（A2 档位池直写；$([ "$YES" = "--yes" ] && echo 真发 || echo dry-run)）:"
-  echo "     $PWSEND seq $ARGS $YES"
-  # shellcheck disable=SC2086
-  "$PWSEND" seq $ARGS $YES || return 1
+  # ★★ 2026-11-22 提速：优先走 pwfast。
+  #   实测依据（分项，见 docs/current/OPERABILITY_GPU_REVIEW_2026-11-22.md）：
+  #     · 8 次 SetVariableDataMCB 合计 0.4ms（不是 16ms/次）—— 条间 sleep 纯浪费；
+  #     · sleep=0 发七维全改（112/111/108 12/8/9/10），varlist 读回
+  #       R/G/B=111/111/107 HUE=12 SAT=8 SHARP=9 CON=10，七维全落地、末条提交位生效、
+  #       prefman slot9 全程未被写；恢复原值后逐维复现基线；
+  #     · 收尾 100ms 是为"读回"留的，preview 发完即退出，读回由 check 单独做。
+  #   pwfast 一次 68ms vs pwsend 400ms。pwsend 保留为回退（文件不在就走老路）。
+  if [ "$YES" = "--yes" ] && [ -x "$PWFAST" ]; then
+    echo "  ③ PW直推（pwfast，A2 七维 + 提交位）:"
+    "$PWFAST" "$1" "$2" "$3" "$4" "$5" "$6" "$7" || return 1
+  else
+    if [ "$YES" = "--yes" ]; then
+      ARGS="$ARGS --sleep ${FILMLAB_PWSLEEP:-150}"
+    fi
+    echo "  ③ PW直推（A2 档位池直写；$([ "$YES" = "--yes" ] && echo 真发 || echo dry-run)）:"
+    echo "     $PWSEND seq $ARGS $YES"
+    # shellcheck disable=SC2086
+    "$PWSEND" seq $ARGS $YES || return 1
+  fi
   if [ "$YES" = "--yes" ]; then _pw_cache_put "$1 $2 $3 $4 $5 $6 $7"; fi
   return 0
 }
@@ -681,6 +755,46 @@ jlabel() {
 
 log() { nx_log filmlab "$*"; }
 
+# ---------- 分段计时（NX_TIMING=1 才输出；默认零开销） ----------
+# 预览/提交的端到端耗时能从 nxui 日志的 elapsed_ms 看到，但「读档位 / 切档 /
+# 备份 / 写槽 / 直推 / 恢复档位」各占多少没有数据 —— 而这几段里 getusr20 是
+# 350ms 级、pwfast 一次 68ms / pwsend 一次 400ms，不做分段就只能瞎猜。
+# read 是 busybox 内建（不 fork），只有算术。
+_tm_ms() {
+    read -r _tm_up _ < /proc/uptime 2>/dev/null || { TM_NOW=0; return 1; }
+    _tm_i=${_tm_up%.*}; _tm_raw=${_tm_up#*.}
+    [ "$_tm_raw" = "$_tm_up" ] && _tm_raw=0
+    [ -n "$_tm_i" ] || _tm_i=0
+    # ★ 先记位数再去前导零：.05 的 n=2，去零后只剩 "5"。
+    # ★ 去零是必须的：$((09)) 在 POSIX sh 里是八进制字面量，会报
+    #   "Illegal number" 并让脚本退出 —— uptime 里 .05/.08 很常见。
+    _tm_n=${#_tm_raw}
+    _tm_f=$_tm_raw
+    while :; do
+        _tm_t=${_tm_f#0}
+        [ "$_tm_t" = "$_tm_f" ] && break
+        _tm_f=$_tm_t
+    done
+    [ -n "$_tm_f" ] || _tm_f=0
+    case "$_tm_n" in
+        1) _tm_f=$((_tm_f * 100)) ;;
+        2) _tm_f=$((_tm_f * 10)) ;;
+        3) ;;
+        *) _tm_f=0 ;;
+    esac
+    TM_NOW=$((_tm_i * 1000 + _tm_f))
+    return 0
+}
+tm() {
+    [ "${NX_TIMING:-0}" = 1 ] || return 0
+    _tm_ms || return 0
+    [ -n "${TM_T0:-}" ] || TM_T0=$TM_NOW
+    printf 'TIMING %-10s +%dms  total=%dms\n' \
+        "$1" "$((TM_NOW - ${TM_LAST:-$TM_T0}))" "$((TM_NOW - TM_T0))" >&2
+    TM_LAST=$TM_NOW
+    return 0
+}
+
 #===============================================================
 CMD=$1
 REC=$2
@@ -772,11 +886,13 @@ neutral)
 #---------------------------------------------------------------
 apply)
   [ -z "$REC" ] && { echo "用法: apply <recipe> [slot]"; exit 1; }
+  tm "enter"
   if [ "$UI_REQUEST" = 1 ] && { [ "$FILMLAB_PW" != 1 ] || [ ! -x "$PWSEND" ]; }; then
     echo "REJECT: preview/commit requires FILMLAB_PW=1, pwsend.arm and verified A2 firmware"
     exit 1
   fi
   pw_lock || exit 1
+  tm "lock"
   # UI sends against CUSTOM1 and uses the opening enum only for restore.
   if [ "$UI_REQUEST" = 1 ]; then
     # ★★ UI 快路径（2026-10-17 实测定根因）：预览/提交固定以 CUSTOM1（slot 9）为画布。
@@ -832,6 +948,7 @@ apply)
   done
   if [ "$UI_REQUEST" = 1 ]; then
     pw_lock && pw_preenter_custom1 || exit 1
+    tm "preenter"
     TARGET_PW=${TARGET_PW:-$PREKNOWN}
     if [ "$TARGET_PW" != "0x140009" ]; then
       TSLOT=$(slot_of_enum "$TARGET_PW")
@@ -850,6 +967,7 @@ apply)
   set_r 0 $SLOT "$V0" && set_r 1 $SLOT "$V1" && set_r 2 $SLOT "$V2" &&
     set_r 3 $SLOT "$V3" && set_r 4 $SLOT "$V4" && set_r 5 $SLOT "$V5" &&
     set_r 6 $SLOT "$V6" || { echo "REJECT: slot write failed"; exit 1; }
+  tm "wr_slot"
   fi
   # v2: 白平衡不由配方控制，相机保持自动 WB（见 recipes.json 的 _note）
   # ★ 落盘（2026-10-08 实测必需）：只 set 不 save ⇒ 相机重启后槽位回退到旧值。
@@ -871,6 +989,7 @@ apply)
       PWSTAT="failed"
     fi
   fi
+  tm "pw_direct"
   # A2 commit writes runtime field 10 (= CUSTOM1), regardless of the selected
   # field. Restore the intended enum *after* sending, including on send failure.
   # ★ 10-17 快路径：A2 提交位已经把运行时档位切到 CUSTOM1。
@@ -892,6 +1011,7 @@ apply)
       pw_force_reload "$TARGET_PW"
     fi
   fi
+  tm "reload"
   if [ "$UI_REQUEST" = 1 ] && [ "$PWSTAT" = failed ]; then
     echo "REJECT: PW backend failed (target=$TARGET_PW reload=$RELOAD)"
     exit 1
