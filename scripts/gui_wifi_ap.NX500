@@ -1,6 +1,8 @@
-button|5 GHz|/opt/usr/nx-ks/nx-rc/wifi/nxwifi.sh start5g
-button|2.4 GHz|/opt/usr/nx-ks/nx-rc/wifi/nxwifi.sh start24
-
+button|5 GHz 热点|/opt/usr/nx-ks/nx-rc/wifi/nxwifi.sh start5g
+button|2.4 GHz 热点|/opt/usr/nx-ks/nx-rc/wifi/nxwifi.sh start24
 button|关闭热点|/opt/usr/nx-ks/nx-rc/wifi/nxwifi.sh stop
+
+button|5G 局域网|/opt/usr/nx-ks/nx-rc/wifi/nxwifi.sh sta5g
+button|回 2.4G|/opt/usr/nx-ks/nx-rc/wifi/nxwifi.sh sta24
 
 button|返回|@/opt/usr/nx-ks/gui_settings.NX500

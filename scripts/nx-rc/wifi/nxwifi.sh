@@ -15,13 +15,15 @@
 #
 # 用法：
 #   nxwifi.sh album        局域网相册地址（相机连路由器时用这条，屏幕弹提示）
-#   nxwifi.sh off          断开 WiFi（相机离线）
-#   nxwifi.sh start24      起 2.4 GHz 热点（原厂 SoftAP，本机原厂入口不可用，保留）
-#   nxwifi.sh start5g      起 5 GHz 热点（需 radio，当前卡在原厂 tethering 未激活）
+#   nxwifi.sh sta5g        让相机以客户端身份连 5 GHz（开 band word + 换 5G cfg80211 + 重载驱动）
+#   nxwifi.sh sta24        回到 2.4 GHz 局域网（band word 归零 + 原厂 cfg80211）
+#   nxwifi.sh start5g      起 5 GHz 热点（原厂 SoftAP + 劫持 hostapd）
+#   nxwifi.sh start24      起 2.4 GHz 热点（原厂 SoftAP）
 #   nxwifi.sh stop         停热点
+#   nxwifi.sh off          断开 WiFi（相机离线）
 #   nxwifi.sh status       状态：state / ip / ssid
 #
-# 退出码：0 成功 / 1 前置条件不满足 / 2 用法错 / 3 起壳失败 / 4 停壳失败
+# ★ 退出码 3 的都是「中途失败」：sta5g 失败请跑 sta24 回退，别直接重启。
 #=====================================================================
 set -u
 D=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -142,6 +144,55 @@ show_addr() {
   else
     say "$1 $2"
   fi
+}
+
+# 重载无线驱动栈（STA 模式 drv_mode=1）。$1=1 用 5 GHz 版 cfg80211，$2=0 用原厂模块。
+# 参数来自 NoireSchwarz 的 load_driver()，逐项对齐（2026-11-22）。
+# 注意：调用期间 mlan0 会被删掉再建，网络必然瞬断若干秒。
+reload_driver() {
+  use5g=$1
+  ifconfig mlan0 down >/dev/null 2>&1
+  ifconfig uap0 down >/dev/null 2>&1
+  for m in sd8xxx mlan cfg80211; do
+    /sbin/rmmod "$m" >>"$LOG" 2>&1
+  done
+  sleep 1
+  if [ "$use5g" = "1" ]; then
+    cfg=$NXL_DIR/modules/cfg80211-cn-low5g.ko
+  else
+    cfg=/lib/modules/cfg80211.ko
+  fi
+  [ -f "$cfg" ] || { log "reload: missing $cfg"; return 1; }
+  /sbin/insmod "$cfg" ieee11_regdom=CN >>"$LOG" 2>&1 || return 2
+  /sbin/insmod /lib/modules/mlan.ko >>"$LOG" 2>&1 || return 3
+  /sbin/insmod /lib/modules/sd8xxx.ko \
+    cfg80211_wext=15 \
+    txpwrlimit_cfg=mrvl/txpwrlimit_cfg.bin \
+    cal_data_cfg=mrvl/WlanCalData_ext.conf \
+    fw_name=mrvl/sd8887_uapsta.bin \
+    reg_alpha2=CN "mac_addr=$MACADDR" drv_mode=1 >>"$LOG" 2>&1 || return 4
+  i=0
+  while [ "$i" -lt 25 ]; do
+    [ -d /sys/class/net/mlan0 ] && break
+    sleep 0.4
+    i=$((i+1))
+  done
+  [ -d /sys/class/net/mlan0 ] || { log "reload: mlan0 not created"; return 5; }
+  ifconfig mlan0 up >>"$LOG" 2>&1
+  sleep 1
+  return 0
+}
+
+# 等 STA 重新拿到地址，最多 $1 秒
+wait_sta_ip() {
+  n=0
+  while [ "$n" -lt "$1" ]; do
+    got=$(mlan_ip)
+    [ -n "$got" ] && { say "$got"; return 0; }
+    sleep 1
+    n=$((n+1))
+  done
+  return 1
 }
 
 hotspot_notice() {
@@ -282,6 +333,62 @@ case "${1:-status}" in
     ifconfig mlan0 del "$ip" >/dev/null 2>&1
     rm -f "$HOT_OWNER" 2>/dev/null
     say "WIFI_OFF"
+    exit 0
+    ;;
+  sta5g)
+    # 让相机以客户端身份连 5 GHz：开 band word → 换 5G cfg80211 → 重载驱动(drv_mode=1) → 重连
+    MACADDR=$(cat /opt/etc/.mac.info 2>/dev/null)
+    [ -n "$MACADDR" ] || die "MAC_UNAVAILABLE" 1
+    [ -f "$NXL_DIR/modules/cfg80211-cn-low5g.ko" ] || die "MODULE_MISSING（先跑一次 start5g 铺目录，或手工复制）" 1
+    log "sta5g begin (band word 0->1, reload drv_mode=1)"
+    before=$($BB devmem 0x85440068 32 2>/dev/null)
+    log "sta5g: band word before=$before"
+    $BB devmem 0x85440068 32 1 >>"$LOG" 2>&1 || die "BAND_WRITE_FAILED" 3
+    after=$($BB devmem 0x85440068 32 2>/dev/null)
+    log "sta5g: band word after=$after"
+    [ "$after" = "0x00000001" ] || die "BAND_WRITE_UNVERIFIED after=$after" 3
+
+    reload_driver 1
+    rc=$?
+    [ "$rc" -eq 0 ] || die "DRIVER_RELOAD_FAILED rc=$rc（可试 nxwifi.sh sta24 回 2.4G）" 3
+
+    # wpa_supplicant 丢接口后不一定会自己重连，杀掉让 connmand 重新拉起
+    killall wpa_supplicant >>"$LOG" 2>&1
+    sleep 4
+    ip=$(wait_sta_ip 40) || {
+      log "sta5g: no ip after 40s"
+      say "STA5G_NO_IP 未取到地址 · 建议 nxwifi.sh sta24 回 2.4G"
+      exit 3
+    }
+    freq=$(iwconfig mlan0 2>/dev/null | sed -n 's/.*Frequency=\([0-9.]*\) GHz.*/\1/p')
+    say "STA5G_UP ip=$ip freq=${freq:-?}GHz"
+    log "sta5g ok ip=$ip freq=${freq:-?}"
+    show_addr "5G 局域网已连" "http://$ip/"
+    exit 0
+    ;;
+  sta24)
+    # 回 2.4 GHz 局域网：band word 归零 + 用原厂 cfg80211 重载驱动
+    MACADDR=$(cat /opt/etc/.mac.info 2>/dev/null)
+    [ -n "$MACADDR" ] || die "MAC_UNAVAILABLE" 1
+    log "sta24 begin (band word ->0, reload stock cfg80211)"
+    $BB devmem 0x85440068 32 0 >>"$LOG" 2>&1
+    log "sta24: band word now $($BB devmem 0x85440068 32 2>/dev/null)"
+
+    reload_driver 0
+    rc=$?
+    [ "$rc" -eq 0 ] || die "DRIVER_RELOAD_FAILED rc=$rc（若网断，按机身 WiFi 键或重启）" 3
+
+    killall wpa_supplicant >>"$LOG" 2>&1
+    sleep 4
+    ip=$(wait_sta_ip 40) || {
+      log "sta24: no ip after 40s"
+      say "STA24_NO_IP 驱动已回原厂但没取到地址 · 按机身 WiFi 键重连"
+      exit 3
+    }
+    freq=$(iwconfig mlan0 2>/dev/null | sed -n 's/.*Frequency=\([0-9.]*\) GHz.*/\1/p')
+    say "STA24_UP ip=$ip freq=${freq:-?}GHz"
+    log "sta24 ok ip=$ip freq=${freq:-?}"
+    show_addr "已回 2.4G 局域网" "http://$ip/"
     exit 0
     ;;
   start5g)
