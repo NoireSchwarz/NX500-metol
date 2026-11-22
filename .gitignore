@@ -267,3 +267,7 @@ test_server/af_static/out/
 # 按实测曲线重生成的中间产物（web_regen.py --all 可再现）
 tools/lutgen/webstage_regen/
 looks_before_regen_20261108/
+
+# ===== 临时分析产物（下划线前缀 / tmp_ 目录）=====
+tmp_af/
+tools/lutgen/_run*.sh
