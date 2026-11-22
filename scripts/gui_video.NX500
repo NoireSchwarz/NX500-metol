@@ -1,0 +1,7 @@
+button|分辨率|@/opt/usr/nx-ks/gui_video_res.NX500
+button|视频码率|@/tmp/gui_br.NX500
+button|V-Log 曲线|@/opt/usr/nx-ks/gui_vlog.NX500
+
+button|批量录制|brec.sh
+
+button|返回|@/opt/usr/nx-ks/gui_ini.NX500

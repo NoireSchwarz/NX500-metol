@@ -4,5 +4,8 @@ button|实用功能|@/opt/usr/nx-ks/gui_func.NX500
 button|对焦 & 配置文件|@/opt/usr/nx-ks/gui_focus.NX500
 button|系统设置|@/opt/usr/nx-ks/gui_settings.NX500
 
+button|视频档位|@/opt/usr/nx-ks/gui_video.NX500
 button|休眠|hibernate.sh
 checkbox|远程控制|nx-rc.sh
+
+button|IP: 192.168.0.104 [SSH开]|ssh_hint.sh --ui

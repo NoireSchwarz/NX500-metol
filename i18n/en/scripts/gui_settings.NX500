@@ -10,5 +10,7 @@ checkbox|Enable Bluetooth|bt.sh
 checkbox|Overlay|ov.sh
 button|Uninstall|uninstall.sh
 
+button|LAN Album|/opt/usr/nx-ks/nx-rc/wifi/nxwifi.sh album
+button|Camera Hotspot|@/opt/usr/nx-ks/gui_wifi_ap.NX500
 button|GO BACK|@/opt/usr/nx-ks/gui_ini.NX500
 button|CANCEL|/opt/usr/nx-ks/gui_exit.sh

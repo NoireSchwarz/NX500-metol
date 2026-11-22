@@ -1129,7 +1129,7 @@ static void draw(void) {
              * 所在滤镜层的快捷方式，不是第二个入口 —— 两个页签在滤镜页里。 */
             nk_layout_row_begin(ctx, NK_STATIC, 24, 4);
             nk_layout_row_push(ctx, 300);
-            nk_label_colored(ctx, "NX-KS  /  菜单", NK_TEXT_LEFT, accent);
+            nk_label_colored(ctx, "Metol  /  菜单", NK_TEXT_LEFT, accent);
             nk_layout_row_push(ctx, 96);
             /* 「返回 / 取消」常驻顶栏 —— 原来它们是菜单文件里的最后两项，
              * 排在末页，翻两页才够得着（用户明确否掉这一点）。 */

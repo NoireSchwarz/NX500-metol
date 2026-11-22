@@ -1,0 +1,6 @@
+button|5 GHz|/opt/usr/nx-ks/nx-rc/wifi/nxwifi.sh start5g
+button|2.4 GHz|/opt/usr/nx-ks/nx-rc/wifi/nxwifi.sh start24
+
+button|Hotspot Off|/opt/usr/nx-ks/nx-rc/wifi/nxwifi.sh stop
+
+button|Back|@/opt/usr/nx-ks/gui_settings.NX500

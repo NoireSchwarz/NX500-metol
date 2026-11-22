@@ -156,6 +156,7 @@ docs/discovery/tools/*.pyc
 !scripts/lut/*.arm
 !scripts/nxui/nxui.arm
 !scripts/nxui/nxui_en.arm
+!scripts/nx-rc/video/bin/*.arm
 *.o
 *.pdb
 test_server/**/out/

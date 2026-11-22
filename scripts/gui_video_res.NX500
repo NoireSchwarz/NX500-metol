@@ -1,0 +1,8 @@
+button|4K 全宽 24p|/opt/usr/nx-ks/nx-rc/video/nxvideo.sh full
+button|4K 原生 30p|/opt/usr/nx-ks/nx-rc/video/nxvideo.sh uhd
+button|2.5K 输出|/opt/usr/nx-ks/nx-rc/video/nxvideo.sh 2k
+button|裁切80% 30p|/opt/usr/nx-ks/nx-rc/video/nxvideo.sh crop80
+
+button|其它分辨率|@/opt/usr/nx-ks/gui_res.NX500
+
+button|返回|@/opt/usr/nx-ks/gui_video.NX500
