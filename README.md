@@ -9,7 +9,7 @@ Samsung NX500 / NX1（Tizen / DRIMe5）增强固件 mod，基于社区上游
 
 > English version: [README_EN.md](README_EN.md)
 
-**最新 1.15.6**（2026-11-16）— 双语发行：每次发版两个包，
+**最新 1.15.9**— 双语发行：每次发版两个包，
 `Metol-<ver>.zip`（中文）与 `Metol-<ver>-EN.zip`（英文菜单 / 英文 NXUI 面板 / 英文 README），
 Release 说明中英并列。
 
